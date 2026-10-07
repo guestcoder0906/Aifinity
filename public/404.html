@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aifinity</title>
+    <script>
+      (function() {
+        var path = window.location.pathname;
+        var search = window.location.search;
+        var hash = window.location.hash;
+        if (path.toLowerCase().indexOf('welcome') !== -1) {
+          window.location.replace('/welcome' + search + hash);
+        } else {
+          window.location.replace('/?redirect=' + encodeURIComponent(path + search + hash));
+        }
+      })();
+    </script>
+  </head>
+  <body style="background:#000;color:#ccc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <p>Loading Aifinity...</p>
+  </body>
+</html>

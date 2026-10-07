@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  --app-height: 100dvh;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  height: var(--app-height, 100dvh);
+  margin: 0;
+  padding: 0;
+  background-color: #000000;
+  -webkit-text-size-adjust: 100%;
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  height: var(--app-height, 100dvh);
+  max-height: var(--app-height, 100dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Safe area padding for mobile home indicator */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Prevent iOS Safari auto-zoom on input focus */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Momentum touch scrolling for scroll containers */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+.overflow-auto {
+  -webkit-overflow-scrolling: touch;
+}

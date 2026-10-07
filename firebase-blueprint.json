@@ -1,0 +1,161 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User account profile, registered username, tier, and action credits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "username_lower": { "type": "string" },
+        "tier": { "type": "string", "enum": ["free", "adventurer", "legendary", "celestial"] },
+        "role": { "type": "string", "enum": ["user", "mod", "admin"] },
+        "showGlowingName": { "type": "boolean" },
+        "hasInfiniteActions": { "type": "boolean" },
+        "canSaveMultipleAdventures": { "type": "boolean" },
+        "canPostCommunityAdventures": { "type": "boolean" },
+        "actionCredits": { "type": "number" },
+        "freeStackedActions": { "type": "number" },
+        "freeRolloverActions": { "type": "number" },
+        "dailyActionsUsed": { "type": "number" },
+        "dailyActionsDate": { "type": "string" },
+        "lastDailyClaimDate": { "type": "string" },
+        "appliedTransactionIds": { "type": "array", "items": { "type": "string" } },
+        "creditedActionTxIds": { "type": "array", "items": { "type": "string" } },
+        "authProvider": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "username_lower"]
+    },
+    "usernames": {
+      "title": "Username Reservation",
+      "description": "Unique mapping of lowercase username to user uid",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "username"]
+    },
+    "emails": {
+      "title": "Email Registry",
+      "description": "Unique mapping of lowercase email to user uid",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "guest_names": {
+      "title": "Guest Name Reservation",
+      "description": "Unique guest name reservation by guestId",
+      "type": "object",
+      "properties": {
+        "guestId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "nameLower": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["guestId", "displayName", "nameLower"]
+    },
+    "adventures": {
+      "title": "Saved Adventure",
+      "description": "User saved game state and adventure history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "startingPrompt": { "type": "string" },
+        "initialAiGeneration": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title"]
+    },
+    "community_adventures": {
+      "title": "Community Adventure",
+      "description": "Adventures shared publicly by Adventurer and Legendary players",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorTier": { "type": "string" },
+        "title": { "type": "string" },
+        "shareType": { "type": "string" },
+        "startingPrompt": { "type": "string" },
+        "initialAiGeneration": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "authorId", "authorName", "title", "shareType"]
+    },
+    "transactions": {
+      "title": "Payment Transaction",
+      "description": "Payment records for action packs and subscription orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "itemName": { "type": "string" },
+        "itemType": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "amount", "itemName", "status"]
+    },
+    "config": {
+      "title": "App Configuration",
+      "description": "Global application configuration including admin payout routing",
+      "type": "object",
+      "properties": {
+        "recipientEmail": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "venmoHandle": { "type": "string" },
+        "cashAppHandle": { "type": "string" },
+        "payPalHandle": { "type": "string" },
+        "instructions": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profile with action credits, subscription tier, and username"
+    },
+    "/usernames/{usernameLower}": {
+      "schema": "usernames",
+      "description": "Unique username registry"
+    },
+    "/emails/{emailLower}": {
+      "schema": "emails",
+      "description": "Unique email lookup registry"
+    },
+    "/guest_names/{nameLower}": {
+      "schema": "guest_names",
+      "description": "Guest name unique reservation"
+    },
+    "/users/{userId}/adventures/{adventureId}": {
+      "schema": "adventures",
+      "description": "User private saved adventures"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "transactions",
+      "description": "User transaction records"
+    },
+    "/community_adventures/{adventureId}": {
+      "schema": "community_adventures",
+      "description": "Publicly shared community adventures"
+    },
+    "/config/{configId}": {
+      "schema": "config",
+      "description": "Global application and payout configuration"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "aimud-gemini-edition",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "preview": "vite preview",
+    "lint": "vite build"
+  },
+  "dependencies": {
+    "@google/genai": "^1.41.0",
+    "@stripe/stripe-js": "^9.16.0",
+    "@supabase/supabase-js": "^2.78.0",
+    "express": "^5.2.1",
+    "firebase": "^12.19.0",
+    "lucide-react": "^0.564.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "stripe": "^22.6.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

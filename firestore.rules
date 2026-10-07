@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isModOrAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'chloe.a.alba.1@gmail.com' ||
+          request.auth.token.email.lower() == 'chloe.a.alba.1@gmail.com'
+        )) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          ('role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'mod']) ||
+          ('username' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == 'Chloe' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == 'chloe'))
+        ))
+      );
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId) || isModOrAdmin();
+
+      // Private saved adventures under user document
+      match /adventures/{adventureId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Payment transactions under user document
+      match /transactions/{transactionId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Unique username lookup table
+    match /usernames/{usernameLower} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // Unique email lookup table
+    match /emails/{emailLower} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // Active guest name claims: allow guests to check and reserve unique guest names
+    match /guest_names/{nameLower} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if request.resource.data.guestId == resource.data.guestId;
+      allow delete: if resource.data.guestId != null;
+    }
+
+    // Community shared adventures: visible to all, posted/managed by authenticated authors or mod/admin moderation
+    match /community_adventures/{adventureId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isModOrAdmin());
+    }
+
+    // App configurations and payout routing settings
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isModOrAdmin();
+    }
+  }
+}

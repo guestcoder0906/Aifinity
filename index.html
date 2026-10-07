@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Aifinity</title>
+    <link rel="canonical" href="https://www.aifinity-rpg.com/" />
+    <meta name="description" content="An infinite AI RPG sandbox game that keeps track and sets up everything under seconds! Easy to play, in the most accurate way! Setting up and doing actions is as easy as sending a text." />
+    <meta property="og:title" content="Aifinity" />
+    <meta property="og:description" content="An infinite AI RPG sandbox game that keeps track and sets up everything under seconds! Easy to play, in the most accurate way! Setting up and doing actions is as easy as sending a text." />
+    <meta property="og:url" content="https://www.aifinity-rpg.com/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Aifinity" />
+    <meta name="twitter:description" content="An infinite AI RPG sandbox game that keeps track and sets up everything under seconds! Easy to play, in the most accurate way! Setting up and doing actions is as easy as sending a text." />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Custom scrollbar to match the terminal aesthetic */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #111;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #444;
+      }
+
+      @keyframes aifinity-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes aifinity-bar {
+        0% { transform: translateX(-100%); width: 40%; }
+        50% { transform: translateX(50%); width: 70%; }
+        100% { transform: translateX(200%); width: 40%; }
+      }
+    </style>
+    <script>
+      (function() {
+        // 1. Bulletproof Storage Shim for Safari (Private Browsing mode & restricted iframes)
+        try {
+          var memStore = {};
+          var storageWorks = false;
+          try {
+            var k = '__safari_storage_check__';
+            window.localStorage.setItem(k, k);
+            window.localStorage.removeItem(k);
+            storageWorks = true;
+          } catch (e) {
+            storageWorks = false;
+          }
+
+          if (!storageWorks) {
+            var createStorageFallback = function() {
+              return {
+                getItem: function(key) {
+                  return Object.prototype.hasOwnProperty.call(memStore, key) ? memStore[key] : null;
+                },
+                setItem: function(key, val) {
+                  memStore[key] = String(val);
+                },
+                removeItem: function(key) {
+                  delete memStore[key];
+                },
+                clear: function() {
+                  memStore = {};
+                },
+                key: function(idx) {
+                  return Object.keys(memStore)[idx] || null;
+                },
+                get length() {
+                  return Object.keys(memStore).length;
+                }
+              };
+            };
+
+            try {
+              var fallback = createStorageFallback();
+              Object.defineProperty(window, 'localStorage', {
+                value: fallback,
+                writable: true,
+                configurable: true,
+                enumerable: true
+              });
+            } catch (err) {}
+          } else if (window.Storage && window.Storage.prototype) {
+            // Guard Storage.prototype against quota exceptions or runtime SecurityError in Safari
+            var origSetItem = window.Storage.prototype.setItem;
+            window.Storage.prototype.setItem = function(key, val) {
+              try {
+                origSetItem.call(this, key, val);
+              } catch (err) {
+                memStore[key] = String(val);
+              }
+            };
+            var origGetItem = window.Storage.prototype.getItem;
+            window.Storage.prototype.getItem = function(key) {
+              try {
+                var res = origGetItem.call(this, key);
+                if (res !== null) return res;
+              } catch (err) {}
+              return Object.prototype.hasOwnProperty.call(memStore, key) ? memStore[key] : null;
+            };
+            var origRemoveItem = window.Storage.prototype.removeItem;
+            window.Storage.prototype.removeItem = function(key) {
+              try {
+                origRemoveItem.call(this, key);
+              } catch (err) {}
+              delete memStore[key];
+            };
+          }
+        } catch (storageErr) {
+          console.warn('Storage safety wrapper initialized with fallback', storageErr);
+        }
+
+        // 2. Resilient Viewport Height calculation for Safari
+        function updateAppHeight() {
+          var vh = window.visualViewport && window.visualViewport.height > 0 ? window.visualViewport.height : 0;
+          var ih = window.innerHeight > 0 ? window.innerHeight : 0;
+          var ch = document.documentElement && document.documentElement.clientHeight > 0 ? document.documentElement.clientHeight : 0;
+          var h = vh || ih || ch || (window.screen && window.screen.height) || 600;
+          if (h > 50) {
+            document.documentElement.style.setProperty('--app-height', h + 'px');
+          }
+        }
+        updateAppHeight();
+        window.addEventListener('resize', updateAppHeight, { passive: true });
+        window.addEventListener('orientationchange', updateAppHeight, { passive: true });
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', updateAppHeight, { passive: true });
+          window.visualViewport.addEventListener('scroll', updateAppHeight, { passive: true });
+        }
+        document.addEventListener('DOMContentLoaded', updateAppHeight);
+        window.addEventListener('load', updateAppHeight);
+
+        // 3. SPA route recovery for static hosting / 404 fallbacks
+        try {
+          if (window.location && window.location.search) {
+            var params = new URLSearchParams(window.location.search);
+            var redirectParam = params.get('redirect') || params.get('p') || params.get('route');
+            if (redirectParam) {
+              var decoded = decodeURIComponent(redirectParam);
+              if (decoded.toLowerCase().indexOf('welcome') !== -1 && window.history && window.history.replaceState) {
+                window.history.replaceState({}, '', '/welcome');
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // 4. Preloader watchdog for slow networks / Safari stalls
+        setTimeout(function() {
+          var preloader = document.getElementById('app-preloader');
+          if (preloader) {
+            var reloadBtn = document.createElement('button');
+            reloadBtn.innerText = 'Tap to Refresh';
+            reloadBtn.style.marginTop = '14px';
+            reloadBtn.style.padding = '6px 12px';
+            reloadBtn.style.background = '#262626';
+            reloadBtn.style.color = '#e5e5e5';
+            reloadBtn.style.border = '1px solid #404040';
+            reloadBtn.style.borderRadius = '4px';
+            reloadBtn.style.fontSize = '11px';
+            reloadBtn.style.cursor = 'pointer';
+            reloadBtn.onclick = function() { window.location.reload(); };
+            preloader.appendChild(reloadBtn);
+          }
+        }, 6000);
+      })();
+    </script>
+    <link rel="stylesheet" href="/index.css">
+  </head>
+  <body class="bg-black text-gray-200 overflow-hidden">
+    <div id="root">
+      <div id="app-preloader" style="position: fixed; inset: 0; background-color: #0a0a0a; color: #d4d4d4; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 99999;">
+        <div style="width: 32px; height: 32px; border-radius: 9999px; border: 1px solid #262626; border-top-color: #f59e0b; animation: aifinity-spin 0.8s linear infinite; margin-bottom: 16px;"></div>
+        <div style="font-size: 14px; font-weight: 600; letter-spacing: 0.08em; color: #e5e5e5; margin-bottom: 4px;">
+          AIFINITY
+        </div>
+        <div style="font-size: 12px; color: #737373;">
+          Loading...
+        </div>
+      </div>
+    </div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

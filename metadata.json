@@ -1,0 +1,6 @@
+{
+  "name": "Aifinity",
+  "description": "An infinite AI RPG sandbox game that keeps track and sets up everything under seconds! Easy to play, in the most accurate way! Setting up and doing actions is as easy as sending a text.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
