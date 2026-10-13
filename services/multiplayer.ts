@@ -517,6 +517,7 @@ export class MultiplayerService {
       }
 
       await this.supabase.from('rooms').update({ state }).eq('id', this.roomId);
+      this.onStateUpdate(state);
       this.checkTurnForHost(state);
     });
   }

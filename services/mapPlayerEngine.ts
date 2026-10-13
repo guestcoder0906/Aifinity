@@ -72,7 +72,7 @@ export function isPlayerCharacterFile(
       return { isPlayer: false, username: '', charName: cleanBase, canonicalName: cleanBase };
     }
 
-    const playerMatch = content.match(/[-*•]?\s*Player\s*[:=]\s*([^\n\r]+)/i);
+    const playerMatch = content.match(/[-*•]?\s*(?:Player|Controlled\s*(?:by)?|User|Account|Player\s*Character)\s*[:=]\s*([^\n\r]+)/i);
     if (playerMatch && playerMatch[1]) {
       const pVal = playerMatch[1].replace(/^[*-•\s]+/, '').trim();
       if (pVal && !/^(?:none|n\/a|npc|dead|deceased|former|bot|ai|unassigned)/i.test(pVal)) {
@@ -80,7 +80,7 @@ export function isPlayerCharacterFile(
         username = pVal;
       }
     }
-    const nameMatch = content.match(/[-*•]?\s*(?:Character\s+)?Name\s*[:=]\s*([^\n\r]+)/i);
+    const nameMatch = content.match(/[-*•]?\s*(?:Character\s+)?(?:Full\s+)?Name\s*[:=]\s*([^\n\r]+)/i);
     if (nameMatch && nameMatch[1]) {
       const nVal = nameMatch[1].replace(/^[*-•\s]+/, '').trim();
       if (nVal && nVal.length > 1 && !/^(?:adventurer|player|npc)$/i.test(nVal)) {
@@ -89,8 +89,8 @@ export function isPlayerCharacterFile(
     }
   }
 
-  // Only consider filename pattern fallback if content is absent AND it's not a known item/location/non-player keyword
-  if (!isPlayer && !content && cleanBase.includes('-')) {
+  // Filename pattern fallback: recognize [CharacterName]-[Username] pattern whether content is present or not
+  if (!isPlayer && cleanBase.includes('-')) {
     const parts = cleanBase.split('-');
     const suffix = parts[parts.length - 1].trim();
     const prefix = parts.slice(0, -1).join('-').trim();
@@ -155,14 +155,21 @@ export function cleanAndRepairPlayerFiles(
 
       if (detection.isPlayer) {
         const cleanBase = base.replace(/[-_]npc$/i, '').trim();
-        const targetFilename = `${cleanBase}.txt`;
+        const uLower = (detection.username || '').toLowerCase();
+        let targetFilename: string;
+        if (uLower && !cleanBase.toLowerCase().endsWith(`-${uLower}`) && !cleanBase.toLowerCase().endsWith(`_${uLower}`)) {
+          targetFilename = `${cleanBase}-${detection.username}.txt`;
+        } else {
+          targetFilename = `${cleanBase}.txt`;
+        }
 
         console.log(`[Player Engine] Repairing corrupted player character filename: "${f}" -> "${targetFilename}"`);
         if (content) {
           const cleanedContent = content
             .replace(/[-*•]?\s*is_npc\s*[:=]\s*true[^\n\r]*/gi, '')
             .replace(/[-*•]?\s*category\s*[:=]\s*npc[^\n\r]*/gi, '')
-            .replace(/[-*•]?\s*status\s*[:=]\s*npc[^\n\r]*/gi, '');
+            .replace(/[-*•]?\s*status\s*[:=]\s*npc[^\n\r]*/gi, '')
+            .replace(/[-*•]?\s*Type\s*[:=]\s*Non-Player\s*Character[^\n\r]*/gi, '- Type: Player Character');
           fileSystem.write(targetFilename, cleanedContent);
         }
         fileSystem.delete(f);

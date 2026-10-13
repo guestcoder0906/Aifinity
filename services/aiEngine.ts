@@ -639,9 +639,7 @@ CONTEXT-APPROPRIATE NPC & CREATURE POPULATION:
     - Established NPCs (from existing -npc.txt files and CurrentMap.json) MUST preserve their exact canonical name across turns.
     - NEVER clone or duplicate an existing NPC with slight name variations (e.g. creating 'BlacksmithGarrick-npc' or 'Garrick_Blacksmith-npc' when 'Garrick-npc' already exists, or creating duplicate map tokens like 'TownGuard-npc' alongside 'Town Guard-npc'). Always reuse their established canonical name consistently across both their filename and CurrentMap.json.
     - Unless authentic narrative or game mechanics explicitly apply that clone an entity (such as a Mirror Image spell, Simulacrum, Clone spell/vat, Doppelganger, or illusionary decoys), an NPC is a single unique individual and MUST NEVER exist as multiple cloned tokens or duplicate files.
-    - Generic minions or group members intended to be multiple distinct individuals must be clearly distinguished by distinct numbering (e.g. 'Bandit 1', 'Bandit 2', 'Goblin Archer A', 'Goblin Archer B').
-  * HUMAN PLAYER CHARACTER FILES (NEVER NPCS): Human player character files MUST be named "CharacterName-USERNAME.txt" (e.g. "LyraWhisperwind-Mep.txt", "MiraRavencrest-Chloe.txt") and MUST NEVER have "-npc" appended or be placed under "npcs" on CurrentMap.json!
-  * Create their individual character/entity files with complete stats, physical dimensions, body weight, speed, and inventory.
+  * HUMAN PLAYER CHARACTER FILES & MAP NAMING (CRITICAL): When made or updated, human player character files MUST be named "CharacterName-USERNAME.txt" (e.g. "LyraWhisperwind-Mep.txt", "MiraRavencrest-Chloe.txt") ending strictly with the player's username. PLAYER CHARACTERS MUST NEVER HAVE "-npc" AT THE END! Never name a player character with "-npc.txt", never append "-npc" to their name, and never put them under "npcs" on CurrentMap.json! On CurrentMap.json, place them under "players" with their characterName and username.
   * PERSISTENCE & MAP NAMING: Plot present NPCs, creatures, and mounts directly on "CurrentMap.json" under "npcs" (or on the appropriate page) with coordinates, distinct icon/type, and facing. Their name in CurrentMap.json MUST match their canonical name with "-npc" appended (e.g., "Maeve-npc", "Garrick-npc"). NEVER forget, drop, or clone previously established NPCs from CurrentMap.json across turns!
   * Integrate them into the narrative with exact clickable references (e.g. [Maeve-npc] or [Maeve], [Garrick-npc] or [Garrick]).
   * HOLDING INTEGRITY: Under [CURRENTLY HOLDING], specify only actual item names (e.g. "Steel Broadsword", "Iron Shield", "Oak Staff", "Torch") with their weight and dimensions. Never list limbs, grips, anatomy labels, or duplicate lines as item names (e.g. do NOT write "Both Hands (Two-Handed Grip)" as the item name!). Limbs belong in brackets: e.g. "• [Both Hands (Two-Handed)] Steel Greatsword - 8.5 lbs". Don't add an item as things like free hand because it should just be empty instead etc for example (an unoccupied hand or slot is simply empty—never create an item, inventory item, or item file for "Free Hand" or "Empty Hand").
@@ -1190,7 +1188,7 @@ TECHNICAL PLAN (Follow strictly):
 2. Create these files immediately: ${audit.filesToCreate?.join(', ') || "None"}
 3. Update these files: ${audit.filesToUpdate?.join(', ') || "None"}
 4. Temporal Shift: ${timeShiftNotice}
-5. Map Update Required: ${mapReq}
+5. Map Update: REQUIRED (CRITICAL). Every turn MUST update and return CurrentMap.json in the 'files' object with updated positions, facing angle, vision cones, items, landmarks, and NPCs.
 6. Energy & Stamina: ${audit.energyAudit ? (audit.energyAudit.isEnergyAffected ? `Energy affected (${audit.energyAudit.expectedChange} for ${audit.energyAudit.character || 'character'} - ${audit.energyAudit.reason || ''})` : `No energy change (0 cost) - ${audit.energyAudit.reason || 'Menial task uses no noticeable energy'}`) : "No energy change"}
 7. Currency & Wealth: Dynamically evaluate if this action or its consequences result in ANY currency (e.g. Gold Coins, Silver Coins, Copper, Platinum, Credits, Dollars, Scrip, etc.) being acquired, found, looted, earned, rewarded, gifted, received, paid, spent, donated, or traded. If ANY currency is affected:
    - You MUST update ${playerFile || 'the character file'} under [CURRENCY & FINANCIAL BALANCE] and [CONTAINERS & CARRIED GEAR] (- Carried Inventory (Inside Containers)).
@@ -1203,10 +1201,11 @@ Process this action based on the technical plan. Ensure every new item, weapon, 
 CRITICAL REMINDERS:
 1. You MUST fulfill Every file creation/update listed in the plan above.
 2. ${resolvedCheckDetails ? `Include this exactly: ${resolvedCheckDetails}` : ""}
-3. MAP UPDATE: Fully update CurrentMap.json. 
+3. MAP UPDATE (CRITICAL - NEVER OMIT): Fully update and return CurrentMap.json in your 'files' response object every single turn without exception. 
    - CRITICAL: Do NOT omit pages for players who did not take this turn. If players are separated, return ALL pages in the "pages" array.
    - NOTHING MISSING: All players' observable and known areas, landmarks, items, npcs, structures, terrain, hazards, containers, and loot MUST be on the map with everything updated correctly.
    - NPC PERSISTENCE, ARROW FACING & RANGE OF SIGHT: Every NPC present in the scene MUST be plotted in "npcs" on CurrentMap.json with their name having "-npc" appended (e.g. "Barkeep-npc"). All NPC files MUST end in "-npc.txt". Never forget or drop established NPCs!
+   - PLAYER CHARACTERS ARE NEVER NPCS: Placed strictly under "players" with username and characterName, NEVER in "npcs" and NEVER with "-npc"!
      * Each NPC is rendered on the map as an ARROW pointing where they are facing currently! Always specify 'facing' (0°=East, 90°=South, 180°=West, 270°=North).
      * View range fully applies to ALL NPCs and players via 'vision' ({ "mainAngle": 66, "peripheralAngle": 90, "detailedRange": X, "maxRange": Y }) and dynamically updates based on context.
      * DYNAMIC SIGHT & BLINDNESS: If ANY character or NPC is blind (condition, eye injury, blindness spell, flash, pitch dark without light, or eyes closed/unconscious), view range is COMPLETELY GONE ('detailedRange: 0, maxRange: 0' or 'blind: true'). Their vision cone completely vanishes!
@@ -4517,32 +4516,34 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
     reconcileNpcFiles(this.fs, data.files);
 
     if (data.files && typeof data.files === 'object' && !Array.isArray(data.files)) {
+      // Normalize any variant of CurrentMap.json or top-level map into data.files['CurrentMap.json']
+      const mapKey = Object.keys(data.files).find(k => {
+        const kl = k.toLowerCase().trim();
+        return kl === 'currentmap.json' || kl === 'map.json' || kl === 'currentmap' || kl === './currentmap.json';
+      });
+      if (mapKey && mapKey !== 'CurrentMap.json') {
+        data.files['CurrentMap.json'] = data.files[mapKey];
+        delete data.files[mapKey];
+      }
+      if (!data.files['CurrentMap.json'] && ((data as any).currentMap || (data as any).map || (data as any).CurrentMap)) {
+        data.files['CurrentMap.json'] = (data as any).currentMap || (data as any).map || (data as any).CurrentMap;
+      }
+
       // 0. Enforce strict Player vs NPC file segregation
+      const activeUserLower = (username || '').toLowerCase().trim();
+      const allFilesInitial = this.getFileNamesList();
+      const initialRegistry = buildPlayerRegistry(allFilesInitial, this.fs);
+      const knownPlayerUsernames = new Set(initialRegistry.map(r => r.username.toLowerCase()));
+      if (activeUserLower) knownPlayerUsernames.add(activeUserLower);
+
       const fileNames = Object.keys(data.files);
       for (const filename of fileNames) {
         if (!filename.endsWith('.txt')) continue;
         const fileData = data.files[filename];
-        const contentStr = typeof fileData === 'string' ? fileData : (fileData as any)?.content;
-
-        // Check if this file represents a human player character sheet
-        const playerCheck = isPlayerCharacterFile(filename, contentStr);
-        if (playerCheck.isPlayer) {
-          // If the AI accidentally returned a player file with -npc.txt, strip -npc.txt!
-          if (filename.toLowerCase().endsWith('-npc.txt') || filename.toLowerCase().endsWith('_npc.txt')) {
-            const cleanFilename = `${filename.replace(/[-_]npc\.txt$/i, '')}.txt`;
-            data.files[cleanFilename] = fileData;
-            delete data.files[filename];
-            if (this.fs.exists(filename)) {
-              this.fs.delete(filename);
-            }
-          }
-          continue;
-        }
+        let contentStr = typeof fileData === 'string' ? fileData : (fileData as any)?.content;
 
         const fLower = filename.toLowerCase();
         if (
-          fLower.endsWith('-npc.txt') ||
-          fLower.endsWith('_npc.txt') ||
           fLower.startsWith('world') ||
           fLower.startsWith('guide') ||
           fLower.startsWith('log') ||
@@ -4554,8 +4555,65 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         }
 
         const isItemOrVehicle = typeof contentStr === 'string' && (
-          /category\s*[:=]\s*(?:item|equipment|gear|weapon|vehicle|container|armor|clothing)|type\s*[:=]\s*(?:item|weapon|vehicle|equipment)|attached\s*to\s*[:=]|equipped\s*by\s*[:=]/i.test(contentStr)
+          /category\s*[:=]\s*(?:item|equipment|gear|weapon|vehicle|container|armor|clothing)/i.test(contentStr) ||
+          /type\s*[:=]\s*(?:item|weapon|vehicle|equipment)/i.test(contentStr) ||
+          /attached\s*to\s*[:=]|equipped\s*by\s*[:=]/i.test(contentStr)
         );
+
+        // Check if this file represents a human player character sheet
+        const playerCheck = isPlayerCharacterFile(filename, contentStr);
+        const cleanBase = filename.replace(/\.txt$/, '').replace(/[-_]npc$/i, '').trim();
+        const baseParts = cleanBase.split('-');
+        const lastPartLower = baseParts[baseParts.length - 1].trim().toLowerCase();
+
+        const belongsToKnownPlayer = knownPlayerUsernames.has(lastPartLower) ||
+          (activeUserLower && (fLower.includes(activeUserLower) || (typeof contentStr === 'string' && contentStr.toLowerCase().includes(`player: ${activeUserLower}`))));
+
+        const isHumanPlayerCharacter = !isItemOrVehicle && (playerCheck.isPlayer || belongsToKnownPlayer);
+
+        if (isHumanPlayerCharacter) {
+          // Player character files MUST have the player's name at the end, NEVER "npc"!
+          const assignedUser = playerCheck.username || (belongsToKnownPlayer ? (knownPlayerUsernames.has(lastPartLower) ? baseParts[baseParts.length - 1].trim() : username) : username) || 'Player';
+          const cleanCharName = baseParts.length > 1 && baseParts[baseParts.length - 1].toLowerCase() === assignedUser.toLowerCase()
+            ? baseParts.slice(0, -1).join('-').trim()
+            : cleanBase;
+
+          const properPlayerFilename = `${cleanCharName}-${assignedUser}.txt`;
+
+          // Clean player file content: ensure Player name, strip NPC flags
+          if (typeof contentStr === 'string') {
+            contentStr = contentStr
+              .replace(/[-*•]?\s*is_npc\s*[:=]\s*true[^\n\r]*/gi, '')
+              .replace(/[-*•]?\s*category\s*[:=]\s*npc[^\n\r]*/gi, '')
+              .replace(/[-*•]?\s*status\s*[:=]\s*npc[^\n\r]*/gi)
+              .replace(/[-*•]?\s*Type\s*[:=]\s*Non-Player\s*Character[^\n\r]*/gi, '- Type: Player Character');
+
+            if (!/[-*•]?\s*(?:Player|User)\s*[:=]/i.test(contentStr)) {
+              contentStr = contentStr.replace(/(\[NAME & DESCRIPTION\][\s\S]*?)(?=\n\[|$)/i, `$1\n- Player: ${assignedUser}`);
+            }
+          }
+
+          const updatedFileData = typeof fileData === 'object' && fileData !== null
+            ? { ...fileData, content: contentStr, displayName: cleanCharName }
+            : contentStr;
+
+          data.files[properPlayerFilename] = updatedFileData;
+          if (properPlayerFilename !== filename) {
+            delete data.files[filename];
+            if (this.fs.exists(filename)) {
+              this.fs.delete(filename);
+            }
+          }
+          // Never let player files get renamed to -npc.txt below!
+          continue;
+        }
+
+        if (
+          fLower.endsWith('-npc.txt') ||
+          fLower.endsWith('_npc.txt')
+        ) {
+          continue;
+        }
 
         // Only add -npc.txt if this is genuinely a non-player entity/creature sheet, NOT an item, weapon, equipment, or vehicle!
         if (
@@ -4563,6 +4621,17 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
           typeof contentStr === 'string' &&
           (contentStr.includes('[NAME & DESCRIPTION]') || contentStr.includes('[STATS & MODIFIERS]') || contentStr.includes('[CURRENTLY HOLDING]'))
         ) {
+          // Double-check: if this is for the active player, give it the player's name at the end, NOT npc!
+          if (activeUserLower && (fLower.includes(activeUserLower) || contentStr.toLowerCase().includes(`player: ${activeUserLower}`))) {
+            const properName = `${cleanBase}-${username}.txt`;
+            data.files[properName] = fileData;
+            if (properName !== filename) {
+              delete data.files[filename];
+              if (this.fs.exists(filename)) this.fs.delete(filename);
+            }
+            continue;
+          }
+
           const newFilename = filename.replace(/\.txt$/, '-npc.txt');
           data.files[newFilename] = fileData;
           delete data.files[filename];
@@ -4601,6 +4670,23 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
       }
 
       // ==================== ENHANCED MAP MERGE GUARD ====================
+      // If AI omitted CurrentMap.json this turn, auto-refresh and synchronize map so it never stays stale or fails to update!
+      if (!data.files['CurrentMap.json']) {
+        const existingMap = this.lastValidMap || this.fs.read('CurrentMap.json');
+        if (existingMap) {
+          try {
+            const rawExisting = typeof existingMap === 'string' ? JSON.parse(existingMap) : existingMap;
+            const mergedMap = this.mergeAndNormalizeMap(rawExisting, typeof existingMap === 'string' ? existingMap : JSON.stringify(existingMap), username);
+            const mergedJson = JSON.stringify(mergedMap, null, 2);
+            data.files['CurrentMap.json'] = mergedJson;
+            this.lastValidMap = mergedJson;
+            this.fs.write('CurrentMap.json', mergedJson);
+          } catch (e) {
+            console.error("Auto map sync failed", e);
+          }
+        }
+      }
+
       if (data.files['CurrentMap.json']) {
         try {
           const rawIncoming = (data.files['CurrentMap.json'] as any)?.content ?? data.files['CurrentMap.json'];
@@ -4615,6 +4701,7 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
             data.files['CurrentMap.json'] = mergedJson;
           }
           this.lastValidMap = mergedJson;
+          this.fs.write('CurrentMap.json', mergedJson);
         } catch (e) {
           console.error("Map merge guard failed", e);
         }
@@ -4813,18 +4900,27 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
       return { pages: [] };
     }
 
+    // Unwrap if wrapped in outer map property
+    const inner = (parsed.pages && Array.isArray(parsed.pages))
+      ? parsed
+      : (parsed.map && typeof parsed.map === 'object' ? parsed.map : null)
+      || (parsed.CurrentMap && typeof parsed.CurrentMap === 'object' ? parsed.CurrentMap : null)
+      || (parsed.currentMap && typeof parsed.currentMap === 'object' ? parsed.currentMap : null)
+      || (parsed['CurrentMap.json'] && typeof parsed['CurrentMap.json'] === 'object' ? parsed['CurrentMap.json'] : null)
+      || parsed;
+
     // Case 1: Already wrapped in standard schema: { pages: [...] }
-    if (Array.isArray(parsed.pages)) {
-      return parsed;
+    if (Array.isArray(inner.pages)) {
+      return inner;
     }
 
     // Case 2: AI returned a direct top-level array of page objects: [{ name: "...", areas: [...] }, ...]
-    if (Array.isArray(parsed)) {
-      return { pages: parsed };
+    if (Array.isArray(inner)) {
+      return { pages: inner };
     }
 
     // Case 3: Flat single-page map object: { name?: "...", areas: [...], players: [...] }
-    return { pages: [parsed] };
+    return { pages: [inner] };
   }
 
   private getFileNamesList(): string[] {
@@ -4878,25 +4974,25 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
     const allFileNames = this.getFileNamesList();
     const playerRegistry = buildPlayerRegistry(allFileNames, this.fs);
 
-    // Distribute root-level entities to page 0 only if undefined on page 0
+    // Distribute root-level entities to page 0 if empty on page 0
     const hasAnyPagePlayers = normalized.pages.some((p: any) => Array.isArray(p.players) && p.players.length > 0);
     if (!hasAnyPagePlayers && Array.isArray((incomingParsed as any)?.players) && (incomingParsed as any).players.length > 0) {
-      if (normalized.pages[0].players === undefined) {
+      if (!normalized.pages[0].players || normalized.pages[0].players.length === 0) {
         normalized.pages[0].players = (incomingParsed as any).players;
       }
     }
     if (Array.isArray((incomingParsed as any)?.items) && (incomingParsed as any).items.length > 0) {
-      if (normalized.pages[0].items === undefined) {
+      if (!normalized.pages[0].items || normalized.pages[0].items.length === 0) {
         normalized.pages[0].items = (incomingParsed as any).items;
       }
     }
     if (Array.isArray((incomingParsed as any)?.landmarks) && (incomingParsed as any).landmarks.length > 0) {
-      if (normalized.pages[0].landmarks === undefined) {
+      if (!normalized.pages[0].landmarks || normalized.pages[0].landmarks.length === 0) {
         normalized.pages[0].landmarks = (incomingParsed as any).landmarks;
       }
     }
     if (Array.isArray((incomingParsed as any)?.npcs) && (incomingParsed as any).npcs.length > 0) {
-      if (normalized.pages[0].npcs === undefined) {
+      if (!normalized.pages[0].npcs || normalized.pages[0].npcs.length === 0) {
         normalized.pages[0].npcs = (incomingParsed as any).npcs;
       }
     }
@@ -5109,10 +5205,11 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
    * Enforces structural schema normalization to prevent nested or corrupt arrays.
    * Attempts sequential fallback: direct parse -> repairJSON -> lastValidMap -> sanitizeJSON.
    */
-  private writeMapSafe(content: string, username?: string): void {
+  private writeMapSafe(content: any, username?: string): void {
+    const rawContentStr = typeof content === 'object' && content !== null ? JSON.stringify(content) : String(content || '{}');
     // 1. Direct parse attempt with normalization and merging
     try {
-      const parsed = JSON.parse(content);
+      const parsed = typeof content === 'object' && content !== null ? content : JSON.parse(rawContentStr);
       const mergedObj = this.mergeAndNormalizeMap(parsed, this.lastValidMap || this.fs.read('CurrentMap.json'), username);
       const normalized = JSON.stringify(mergedObj, null, 2);
       this.fs.write('CurrentMap.json', normalized);

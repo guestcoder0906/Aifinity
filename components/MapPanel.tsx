@@ -234,6 +234,12 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
     let rawPages: any[] = [];
     if (mapData?.pages && Array.isArray(mapData.pages)) {
       rawPages = mapData.pages;
+    } else if (mapData?.map?.pages && Array.isArray(mapData.map.pages)) {
+      rawPages = mapData.map.pages;
+    } else if (mapData?.CurrentMap?.pages && Array.isArray(mapData.CurrentMap.pages)) {
+      rawPages = mapData.CurrentMap.pages;
+    } else if (mapData?.currentMap?.pages && Array.isArray(mapData.currentMap.pages)) {
+      rawPages = mapData.currentMap.pages;
     } else if (Array.isArray(mapData)) {
       rawPages = mapData;
     } else if (mapData?.areas) {
@@ -255,19 +261,19 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
     reconcileRegisteredPlayersOnMap(pList, playerRegistry);
     deduplicatePlayersOnMap(pList, playerRegistry, { activeUsername: username });
 
-    // Inherit root-level entities to page 0 only if undefined on the page
+    // Inherit root-level entities to page 0 if empty on page 0
     if (pList.length === 1) {
       const firstPage = pList[0];
-      if (firstPage.players === undefined && Array.isArray(mapData?.players) && mapData.players.length > 0) {
+      if ((!firstPage.players || firstPage.players.length === 0) && Array.isArray(mapData?.players) && mapData.players.length > 0) {
         firstPage.players = mapData.players;
       }
-      if (firstPage.items === undefined && Array.isArray(mapData?.items) && mapData.items.length > 0) {
+      if ((!firstPage.items || firstPage.items.length === 0) && Array.isArray(mapData?.items) && mapData.items.length > 0) {
         firstPage.items = mapData.items;
       }
-      if (firstPage.landmarks === undefined && Array.isArray(mapData?.landmarks) && mapData.landmarks.length > 0) {
+      if ((!firstPage.landmarks || firstPage.landmarks.length === 0) && Array.isArray(mapData?.landmarks) && mapData.landmarks.length > 0) {
         firstPage.landmarks = mapData.landmarks;
       }
-      if (firstPage.npcs === undefined && Array.isArray(mapData?.npcs) && mapData.npcs.length > 0) {
+      if ((!firstPage.npcs || firstPage.npcs.length === 0) && Array.isArray(mapData?.npcs) && mapData.npcs.length > 0) {
         firstPage.npcs = mapData.npcs;
       }
     }
@@ -356,6 +362,17 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
         n.isHeld ||
         (n.holder && n.holder !== 'ground')
       ) {
+        continue;
+      }
+
+      // Never render a registered human player character as an NPC token!
+      const isRegisteredPlayer = playerRegistry.some(pr => {
+        const u = pr.username.toLowerCase();
+        const c = pr.charName.toLowerCase();
+        const f = pr.fullName.toLowerCase();
+        return cleanLower === u || cleanLower === c || cleanLower === f || pr.aliases.has(cleanLower);
+      });
+      if (isRegisteredPlayer) {
         continue;
       }
       let name = rawName;

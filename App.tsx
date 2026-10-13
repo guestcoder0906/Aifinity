@@ -1341,6 +1341,7 @@ function App() {
               worldTime: parseActiveWorldTime(fileSystem.read('WorldTime.txt')),
               turnProcessed: true
             });
+            syncFiles();
           } else {
             // Even if AI engine returned null/failed, sync turnProcessed so players are not stuck waiting
             ms.syncState({
@@ -1367,14 +1368,14 @@ CHARACTER IDENTITY RULE (CRITICAL):
 - The character's in-world Name MUST be a distinct, authentic, fictional name (e.g. "${suggestedCharName}") fitting their class, appearance, background, and world lore.
 - NEVER use the player's account username "${newUsername}" as their character name!
 - NEVER name the character generic placeholders like "Adventurer" or "Player".
-- The file MUST be named EXACTLY in the format "[CharacterName]-${newUsername}.txt" (e.g. "${suggestedCharName.replace(/\s+/g, '')}-${newUsername}.txt").
+- The file MUST be named EXACTLY in the format "[CharacterName]-${newUsername}.txt" (e.g. "${suggestedCharName.replace(/\s+/g, '')}-${newUsername}.txt"). PLAYER CHARACTERS MUST HAVE THE PLAYER'S NAME AT THE END, NEVER NPC!
 - Under [NAME & DESCRIPTION] in the character file:
   - Name: [Fictional In-World Character Name] (e.g. "${suggestedCharName}")
   - Player: ${newUsername}
 - Place this player character in "CurrentMap.json" under "players" with:
   username: "${newUsername}",
   characterName: "[Fictional In-World Character Name]"
-- PLAYER CHARACTERS ARE NEVER NPCS: DO NOT put this player character in "npcs" on CurrentMap.json!
+- PLAYER CHARACTERS ARE NEVER NPCS: DO NOT put this player character in "npcs" on CurrentMap.json and NEVER append "-npc" to their name or file!
 - ZERO UNINTENDED NPC CLONING: Existing NPCs in context must retain their established canonical names. Never create duplicate or cloned NPC files or map tokens with slight name variations (e.g. 'Garrick-npc' vs 'BlacksmithGarrick-npc') unless genuine cloning context (spells/illusions/clones) explicitly applies.
 
 CRITICAL ANTI-LAZINESS MANDATE:
@@ -1396,7 +1397,8 @@ STARTING INVENTORY LIMIT RULE (CRITICAL):
 - The maximum number of carrying items this character starts with (equipped gear + carried in containers) MUST BE LESS THAN OR EQUAL TO 2x their hand slots (e.g. max 4 items for a 2-handed humanoid; 1 slot = max 2 items). Any additional items, background equipment, or family heirlooms must be placed under [OWNED / STORED ITEMS (NOT ON PERSON)] with an attached location (e.g. [Location: Starting Home / Camp Stash]). During the adventure, characters can carry more than this limit!
 
 CRITICAL: Check your context. If a character file for player "${newUsername}" (ending in "-${newUsername}.txt") ALREADY EXISTS, you MUST update that specific file and NOT create a new one. Do not create duplicates. Return the character file AND update "CurrentMap.json" to place the new player at the appropriate starting location. DO NOT modify, empty, or delete ANY OTHER existing files (do not use null).`;
-          await aiEngine.processAction(prompt);
+          await aiEngine.processAction(prompt, newUsername);
+          syncFiles();
 
           // Fallback guarantee: ensure character file exists in filesystem
           const userLower = (newUsername || '').toLowerCase();
