@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UpdateItem } from '../types';
 import { FileSystem } from '../services/fileSystem';
-import { FileText, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, PanelLeftOpen, PanelLeftClose, Activity, Settings, RefreshCw, RotateCcw, Users, LogOut, Play, Share2, Map as MapIcon, User, Compass, ShoppingCart, Bookmark, Globe, Zap, Scale, Package, AlertTriangle, ShieldCheck, Gauge, X, Shield, AlertOctagon, Hand, Coins, MessageSquare, Trash2, Sparkles } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, PanelLeftOpen, PanelLeftClose, Activity, Settings, RefreshCw, RotateCcw, Users, LogOut, Play, Share2, Map as MapIcon, User, Compass, ShoppingCart, Bookmark, Globe, Zap, Scale, Package, AlertTriangle, ShieldCheck, Gauge, X, Shield, AlertOctagon, Hand, Coins, MessageSquare, Trash2, Sparkles, Swords } from 'lucide-react';
 import MapPanel, { MapPanelHandle } from './MapPanel';
 import GoldenName from './GoldenName';
 import { ActionStatus } from '../services/actionLimitService';
@@ -1168,10 +1168,78 @@ const Sidebar: React.FC<SidebarProps> = ({
                                         })}
                                     </div>
                                   ) : (
-                                    <div className="text-[9px] text-gray-500 italic pl-1">
-                                      Hands/Appendages Free (0 lbs)
+                                    <div className="text-[9px] text-gray-500 italic pl-1 flex items-center justify-between">
+                                      <span>Hands/Appendages Free (0 lbs)</span>
+                                      <span className="text-[8px] text-amber-400/90 font-medium font-mono">Bare-Handed Ready</span>
                                     </div>
                                   )}
+                                </div>
+                              )}
+
+                              {/* Attacks & Combat Actions (Weapon & Realistic Unarmed) */}
+                              {pStats.attacks && pStats.attacks.length > 0 && (
+                                <div className="space-y-1 pt-1 border-t border-neutral-800">
+                                  <div className="text-[10px] text-gray-400 font-medium flex items-center justify-between">
+                                    <div className="flex items-center gap-1">
+                                      <Swords size={11} className="text-red-400" />
+                                      <span>Attacks & Combat Actions ({pStats.attacks.length}):</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-[8.5px]">
+                                      {pStats.unarmedAttacks && pStats.unarmedAttacks.length > 0 && (
+                                        <span className="text-[8px] px-1.5 py-0.2 rounded bg-amber-950/70 border border-amber-800/40 text-amber-300 font-medium">
+                                          {pStats.unarmedAttacks.length} Unarmed
+                                        </span>
+                                      )}
+                                      {pStats.currentlyHolding.length === 0 && (
+                                        <span className="text-[8px] text-neutral-400 italic">
+                                          (Bare-Handed)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[9px] text-gray-300 pl-1 border-l border-red-900/50 space-y-1 mt-0.5">
+                                    {pStats.attacks.map((atk, ai) => (
+                                      <div key={ai} className={`p-1 rounded ${atk.isUnarmed ? 'bg-amber-950/20 border border-amber-900/30' : 'bg-neutral-950/60 border border-neutral-800/40'}`}>
+                                        <div className="flex justify-between items-center gap-1">
+                                          <div className="flex items-center gap-1 min-w-0 font-medium text-gray-200 truncate">
+                                            <span className={atk.isUnarmed ? 'text-amber-400' : 'text-neutral-400'}>•</span>
+                                            <span className="truncate">{atk.name}</span>
+                                            <span className={`text-[7px] px-1 py-0.1 rounded font-mono uppercase shrink-0 ${
+                                              atk.isUnarmed
+                                                ? 'bg-amber-950/70 text-amber-300 border border-amber-800/50'
+                                                : 'bg-neutral-800 text-neutral-300 border border-neutral-700'
+                                            }`}>
+                                              {atk.isUnarmed ? 'Unarmed' : 'Weapon'}
+                                            </span>
+                                            {atk.scalingStat && (
+                                              <span className={`text-[7px] px-1 py-0.1 rounded font-mono uppercase shrink-0 ${
+                                                atk.scalingStat === 'dexterity'
+                                                  ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/40'
+                                                  : atk.scalingStat === 'strength'
+                                                    ? 'bg-red-950/60 text-red-300 border border-red-800/40'
+                                                    : 'bg-blue-950/60 text-blue-300 border border-blue-800/40'
+                                              }`} title={`Scaling Stat: ${atk.scalingStat}`}>
+                                                {atk.scalingStat === 'dexterity' ? 'Dex (Precise)' : atk.scalingStat === 'strength' ? 'Str (Power)' : 'Balanced'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-right shrink-0 font-mono text-[8.5px]">
+                                            <span className="text-red-300 font-semibold">{atk.damage}</span>
+                                            <span className="text-gray-500 ml-1">({atk.staminaCost} Stam)</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[8px] text-gray-400 mt-0.5 pl-2">
+                                          <span className="truncate text-neutral-400">Acc: {atk.accuracy}</span>
+                                          {atk.special && (
+                                            <span className="italic text-amber-300/80 truncate max-w-[55%] text-right" title={atk.special}>
+                                              {atk.special}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
 

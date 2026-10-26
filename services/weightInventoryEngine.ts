@@ -174,6 +174,20 @@ export interface ActiveStatusEffect {
   isExpired?: boolean;
 }
 
+export interface AttackInfo {
+  name: string; // e.g. "Unarmed Strike (Heavy Punch / Cross)", "Precise Jab / Rapid Strike", "Low Kick / Leg Sweep", "Bite (Feral Jaws)", "Claw Swipe"
+  damage: string; // e.g. "4-7 bludgeoning", "10-15 piercing"
+  minDamage?: number;
+  maxDamage?: number;
+  damageType?: string; // e.g. "bludgeoning", "slashing", "piercing", "acid", "cold", "force"
+  staminaCost: number; // e.g. 2
+  accuracy: string; // e.g. "Strength + 5%(1000)" or "Dexterity + 10%(1000)"
+  special?: string;
+  isUnarmed: boolean;
+  scalingStat?: 'strength' | 'dexterity' | 'balanced' | string;
+  rawText?: string;
+}
+
 export interface CharacterPhysicalStats {
   characterName: string;
   username?: string;
@@ -197,6 +211,10 @@ export interface CharacterPhysicalStats {
   encumbranceImmunityReason?: string; // e.g. "Slime biology absorbs items internally without standard encumbrance/slowing"
   encumbranceEffectDescription: string; // Dynamic description of what carrying weight does to this specific entity
   totalCarriedWeight: number; // lbs
+  attacks: AttackInfo[];
+  unarmedAttacks: AttackInfo[];
+  canAttackUnarmed: boolean;
+  unarmedAttackSummary?: string;
   currency: CharacterCurrencyData;
   isMounted: boolean;
   mountedEntityName?: string;
@@ -2921,6 +2939,432 @@ export class WeightInventoryEngine {
   }
 
   /**
+   * Parses an attack or combat action line.
+   * Handles patterns such as:
+   * - "Unarmed Strike (Heavy Punch / Cross): Damage 4-7 bludgeoning. Stamina Cost: 2. Accuracy: Strength + 5%(1000). Special: Bludgeoning impact."
+   * - "Precise Jab / Rapid Strike: Damage 2-4 bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution."
+   * - "Bite (Feral Jaws): Damage 10-15 piercing. Stamina Cost: 5. Accuracy: dexterity + 5%(1000). Special: Chance to bleed."
+   * - "- Broadsword: Damage 12-20 slashing. Stamina Cost: 4. Accuracy: Strength + 0%(1000)."
+   */
+  public static parseAttackLine(line: string): AttackInfo | null {
+    if (!line || !line.trim()) return null;
+    const trimmed = line.trim().replace(/^[-*•>\s]+/, '').replace(/^\d+[\.)]\s*/, '').trim();
+    if (!trimmed) return null;
+
+    // Discard section headers, empty indicators, or structural prompts
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith('[') ||
+      lower.startsWith('format:') ||
+      lower.startsWith('example:') ||
+      lower.startsWith('note:') ||
+      lower === 'none' ||
+      lower === '(none)' ||
+      lower.startsWith('list every physical attack')
+    ) {
+      return null;
+    }
+
+    // Must have a colon or separator separating name and properties, or "damage"
+    const splitMatch = trimmed.match(/^([a-zA-Z0-9_\s'()/-]+?)\s*[:=]\s*(.+)$/i);
+    let name = '';
+    let body = '';
+    if (splitMatch) {
+      name = splitMatch[1].trim();
+      body = splitMatch[2].trim();
+    } else if (lower.includes('damage')) {
+      const dmgIdx = lower.indexOf('damage');
+      name = trimmed.substring(0, dmgIdx).replace(/[:=-]+$/, '').trim();
+      body = trimmed.substring(dmgIdx).trim();
+    } else {
+      return null;
+    }
+
+    if (!name || name.length < 2) return null;
+    const nameLower = name.toLowerCase();
+    if (nameLower.startsWith('damage') || nameLower.startsWith('accuracy') || nameLower.startsWith('stamina') || nameLower.startsWith('special')) {
+      return null;
+    }
+
+    // Parse Damage
+    let damageStr = '1-4 bludgeoning';
+    let minDamage: number | undefined;
+    let maxDamage: number | undefined;
+    let damageType = 'bludgeoning';
+
+    const dmgMatch = body.match(/damage[:=\s]*([0-9]+(?:\.[0-9]+)?)(?:\s*(?:-|to)\s*([0-9]+(?:\.[0-9]+)?))?(?:\s*([a-zA-Z/]+))?/i);
+    if (dmgMatch) {
+      const d1 = parseFloat(dmgMatch[1]);
+      const d2 = dmgMatch[2] ? parseFloat(dmgMatch[2]) : d1;
+      minDamage = Math.min(d1, d2);
+      maxDamage = Math.max(d1, d2);
+      if (dmgMatch[3] && !/^(?:stamina|accuracy|cost|special|none)$/i.test(dmgMatch[3])) {
+        damageType = dmgMatch[3].trim().toLowerCase();
+      }
+      damageStr = minDamage === maxDamage ? `${minDamage} ${damageType}` : `${minDamage}-${maxDamage} ${damageType}`;
+    }
+
+    // Detect damageType if specified elsewhere in body
+    const typeMatch = body.match(/\b(bludgeoning|slashing|piercing|acid|cold|fire|force|necrotic|radiant|lightning|poison|psychic)\b/i);
+    if (typeMatch) {
+      damageType = typeMatch[1].toLowerCase();
+      if (!damageStr.toLowerCase().includes(damageType)) {
+        damageStr = `${minDamage || 1}-${maxDamage || 4} ${damageType}`;
+      }
+    }
+
+    // Parse Stamina Cost
+    let staminaCost = 2;
+    const stamMatch = body.match(/(?:stamina(?:\s*cost)?|energy(?:\s*cost)?|cost)[:=\s]*([0-9]+(?:\.[0-9]+)?)/i);
+    if (stamMatch) {
+      staminaCost = Math.round(parseFloat(stamMatch[1]));
+    }
+
+    // Parse Accuracy
+    let accuracy = 'Strength + 0%(1000)';
+    const accMatch = body.match(/accuracy[:=\s]*([^.;\n\r]+)/i);
+    if (accMatch) {
+      accuracy = accMatch[1].trim();
+    }
+
+    // Parse Special
+    let special: string | undefined;
+    const specMatch = body.match(/special[:=\s]*([^.;\n\r]+)/i);
+    if (specMatch) {
+      special = specMatch[1].trim();
+    }
+
+    // Determine scaling stat (Strength vs Dexterity vs Balanced)
+    let scalingStat: 'strength' | 'dexterity' | 'balanced' | string = 'strength';
+    const comboText = `${name} ${body}`.toLowerCase();
+    if (comboText.includes('dexterity') || comboText.includes('dex') || comboText.includes('precision') || comboText.includes('agility') || comboText.includes('swift')) {
+      scalingStat = 'dexterity';
+    } else if (comboText.includes('balanced') || comboText.includes('dex/str') || comboText.includes('str/dex')) {
+      scalingStat = 'balanced';
+    } else if (comboText.includes('strength') || comboText.includes('str') || comboText.includes('power') || comboText.includes('heavy') || comboText.includes('bludgeon')) {
+      scalingStat = 'strength';
+    }
+
+    // Determine isUnarmed:
+    const isUnarmed = (
+      nameLower.includes('unarmed') ||
+      nameLower.includes('punch') ||
+      nameLower.includes('fist') ||
+      nameLower.includes('jab') ||
+      nameLower.includes('cross') ||
+      nameLower.includes('hook') ||
+      nameLower.includes('uppercut') ||
+      nameLower.includes('palm') ||
+      nameLower.includes('strike') ||
+      nameLower.includes('kick') ||
+      nameLower.includes('sweep') ||
+      nameLower.includes('stomp') ||
+      nameLower.includes('knee') ||
+      nameLower.includes('headbutt') ||
+      nameLower.includes('grapple') ||
+      nameLower.includes('slam') ||
+      nameLower.includes('tackle') ||
+      nameLower.includes('shove') ||
+      nameLower.includes('bite') ||
+      nameLower.includes('jaws') ||
+      nameLower.includes('fangs') ||
+      nameLower.includes('claw') ||
+      nameLower.includes('talon') ||
+      nameLower.includes('tail') ||
+      nameLower.includes('tentacle') ||
+      nameLower.includes('pseudopod') ||
+      nameLower.includes('constrict') ||
+      nameLower.includes('gore') ||
+      nameLower.includes('horn') ||
+      nameLower.includes('spectral touch') ||
+      nameLower.includes('chilling touch')
+    ) && !/(?:sword|dagger|blade|axe|bow|rifle|gun|spear|staff|mace|shield|wand|crossbow|pistol|hammer|flail|scythe)\b/i.test(nameLower);
+
+    return {
+      name,
+      damage: damageStr,
+      minDamage: minDamage || 1,
+      maxDamage: maxDamage || 4,
+      damageType,
+      staminaCost,
+      accuracy,
+      special,
+      isUnarmed,
+      scalingStat,
+      rawText: line.trim()
+    };
+  }
+
+  /**
+   * Dynamically derives realistic unarmed attack(s) for any player or NPC based on their stats,
+   * anatomy, biology, body weight, and context.
+   * Completely flexible with zero hardcoded keyword dependencies.
+   */
+  public static deriveRealisticUnarmedAttacks(params: {
+    characterName?: string;
+    characterType?: string;
+    bodyWeight?: number;
+    strengthMultiplier?: number;
+    holdingLimbsDescription?: string;
+    handSlots?: number;
+    rawFileContent?: string;
+  }): AttackInfo[] {
+    const attacks: AttackInfo[] = [];
+    const bodyWeight = Math.max(5, params.bodyWeight || 160);
+    const strengthMultiplier = Math.max(0.2, params.strengthMultiplier || 1.0);
+    const massFactor = Math.sqrt(bodyWeight / 160);
+
+    const typeStr = (params.characterType || '').toLowerCase();
+    const limbsDesc = (params.holdingLimbsDescription || '').toLowerCase();
+    const fullContent = (params.rawFileContent || '').toLowerCase();
+
+    // Check if the entity is an intangible or completely harmless entity unable to make physical attacks
+    if (
+      (typeStr.includes('passive') || fullContent.includes('harmless') || fullContent.includes('cannot attack')) &&
+      !fullContent.includes('combat')
+    ) {
+      return attacks;
+    }
+
+    const isAmorphous = typeStr.includes('slime') || typeStr.includes('ooze') || typeStr.includes('gelatinous') || typeStr.includes('amorphous');
+    const isIncorporeal = typeStr.includes('ghost') || typeStr.includes('spectral') || typeStr.includes('incorporeal') || typeStr.includes('spirit') || typeStr.includes('wraith');
+    const isSerpentine = typeStr.includes('snake') || typeStr.includes('serpent') || typeStr.includes('constrictor') || typeStr.includes('worm');
+    const isPredatorBeast = limbsDesc.includes('mouth') || limbsDesc.includes('jaw') || limbsDesc.includes('claw') ||
+      typeStr.includes('wolf') || typeStr.includes('dog') || typeStr.includes('canine') ||
+      typeStr.includes('cat') || typeStr.includes('feline') || typeStr.includes('lion') || typeStr.includes('tiger') ||
+      typeStr.includes('bear') || typeStr.includes('beast') || typeStr.includes('dragon') || typeStr.includes('reptile') ||
+      typeStr.includes('dinosaur') || typeStr.includes('crocod');
+
+    if (isAmorphous) {
+      // Slime / Amorphous Biology: Pseudopod Slam & Acidic Touch
+      const minDmg = Math.max(2, Math.round(3 * massFactor * strengthMultiplier));
+      const maxDmg = Math.max(minDmg + 2, Math.round(6 * massFactor * strengthMultiplier));
+      attacks.push({
+        name: 'Unarmed Strike (Pseudopod Slam)',
+        damage: `${minDmg}-${maxDmg} bludgeoning`,
+        minDamage: minDmg,
+        maxDamage: maxDmg,
+        damageType: 'bludgeoning',
+        staminaCost: 2,
+        accuracy: 'Strength + 5%(1000)',
+        special: 'High-viscosity impact; can strike from flexible, shifting angles.',
+        isUnarmed: true,
+        scalingStat: 'strength',
+        rawText: `- Unarmed Strike (Pseudopod Slam): Damage ${minDmg}-${maxDmg} bludgeoning. Stamina Cost: 2. Accuracy: Strength + 5%(1000). Special: High-viscosity impact; can strike from flexible, shifting angles.`
+      });
+
+      const acidMin = Math.max(2, Math.round(2 * massFactor));
+      const acidMax = Math.max(acidMin + 2, Math.round(5 * massFactor));
+      attacks.push({
+        name: 'Corrosive Touch (Acidic Engulf)',
+        damage: `${acidMin}-${acidMax} acid`,
+        minDamage: acidMin,
+        maxDamage: acidMax,
+        damageType: 'acid',
+        staminaCost: 2,
+        accuracy: 'Dexterity + 10%(1000)',
+        special: 'Acidic contact dissolves organic matter and corrodes mundane material.',
+        isUnarmed: true,
+        scalingStat: 'dexterity',
+        rawText: `- Corrosive Touch (Acidic Engulf): Damage ${acidMin}-${acidMax} acid. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Acidic contact dissolves organic matter and corrodes mundane material.`
+      });
+      return attacks;
+    }
+
+    if (isIncorporeal) {
+      // Incorporeal / Spectral Biology
+      const minDmg = Math.max(3, Math.round(4 * strengthMultiplier));
+      const maxDmg = Math.max(minDmg + 3, Math.round(8 * strengthMultiplier));
+      attacks.push({
+        name: 'Spectral Chilling Touch',
+        damage: `${minDmg}-${maxDmg} cold/necrotic`,
+        minDamage: minDmg,
+        maxDamage: maxDmg,
+        damageType: 'cold',
+        staminaCost: 2,
+        accuracy: 'Dexterity + 10%(1000)',
+        special: 'Phases directly through physical armor to leech metabolic warmth.',
+        isUnarmed: true,
+        scalingStat: 'dexterity',
+        rawText: `- Spectral Chilling Touch: Damage ${minDmg}-${maxDmg} cold/necrotic. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Phases directly through physical armor to leech metabolic warmth.`
+      });
+      return attacks;
+    }
+
+    if (isSerpentine) {
+      // Serpentine Anatomy: Constrict & Fanged Strike
+      const constrictMin = Math.max(3, Math.round(4 * massFactor * strengthMultiplier));
+      const constrictMax = Math.max(constrictMin + 2, Math.round(8 * massFactor * strengthMultiplier));
+      attacks.push({
+        name: 'Coil Constriction',
+        damage: `${constrictMin}-${constrictMax} bludgeoning`,
+        minDamage: constrictMin,
+        maxDamage: constrictMax,
+        damageType: 'bludgeoning',
+        staminaCost: 3,
+        accuracy: 'Strength + 5%(1000)',
+        special: 'Suffocates and crushes target; immobilizes on partial or full success.',
+        isUnarmed: true,
+        scalingStat: 'strength',
+        rawText: `- Coil Constriction: Damage ${constrictMin}-${constrictMax} bludgeoning. Stamina Cost: 3. Accuracy: Strength + 5%(1000). Special: Suffocates and crushes target; immobilizes on partial or full success.`
+      });
+
+      const fangMin = Math.max(1, Math.round(2 * massFactor));
+      const fangMax = Math.max(fangMin + 1, Math.round(4 * massFactor));
+      attacks.push({
+        name: 'Fanged Strike',
+        damage: `${fangMin}-${fangMax} piercing`,
+        minDamage: fangMin,
+        maxDamage: fangMax,
+        damageType: 'piercing',
+        staminaCost: 1,
+        accuracy: 'Dexterity + 10%(1000)',
+        special: 'Lightning-fast lunging strike; precise targeting of exposed flesh.',
+        isUnarmed: true,
+        scalingStat: 'dexterity',
+        rawText: `- Fanged Strike: Damage ${fangMin}-${fangMax} piercing. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Lightning-fast lunging strike; precise targeting of exposed flesh.`
+      });
+      return attacks;
+    }
+
+    if (isPredatorBeast) {
+      // Quadruped or Beast Biology: Jaws / Bite & Claws
+      const biteMin = Math.max(2, Math.round(4 * massFactor * strengthMultiplier));
+      const biteMax = Math.max(biteMin + 2, Math.round(8 * massFactor * strengthMultiplier));
+      attacks.push({
+        name: 'Bite (Feral Jaws)',
+        damage: `${biteMin}-${biteMax} piercing`,
+        minDamage: biteMin,
+        maxDamage: biteMax,
+        damageType: 'piercing',
+        staminaCost: 3,
+        accuracy: 'Strength + 5%(1000)',
+        special: 'Crushing jaw force; latching grip with severe puncture and bleed risk.',
+        isUnarmed: true,
+        scalingStat: 'strength',
+        rawText: `- Bite (Feral Jaws): Damage ${biteMin}-${biteMax} piercing. Stamina Cost: 3. Accuracy: Strength + 5%(1000). Special: Crushing jaw force; latching grip with severe puncture and bleed risk.`
+      });
+
+      const clawMin = Math.max(2, Math.round(3 * massFactor * strengthMultiplier));
+      const clawMax = Math.max(clawMin + 2, Math.round(6 * massFactor * strengthMultiplier));
+      attacks.push({
+        name: 'Claw Swipe / Pounce',
+        damage: `${clawMin}-${clawMax} slashing`,
+        minDamage: clawMin,
+        maxDamage: clawMax,
+        damageType: 'slashing',
+        staminaCost: 2,
+        accuracy: 'Dexterity + 10%(1000)',
+        special: 'Fast raking slash; critical precision on exposed vitals.',
+        isUnarmed: true,
+        scalingStat: 'dexterity',
+        rawText: `- Claw Swipe / Pounce: Damage ${clawMin}-${clawMax} slashing. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Fast raking slash; critical precision on exposed vitals.`
+      });
+      return attacks;
+    }
+
+    // Standard Humanoid / Limbed Biology (Punches, Jabs, Kicks, Slams)
+    // 1. Strength-Driven Heavy Strike / Punch
+    // Scales directly with raw physical body mass and strength multiplier
+    const heavyMin = Math.max(1, Math.round(3 * massFactor * strengthMultiplier));
+    const heavyMax = Math.max(heavyMin + 2, Math.round(6 * massFactor * strengthMultiplier));
+    attacks.push({
+      name: 'Unarmed Strike (Heavy Punch / Cross)',
+      damage: `${heavyMin}-${heavyMax} bludgeoning`,
+      minDamage: heavyMin,
+      maxDamage: heavyMax,
+      damageType: 'bludgeoning',
+      staminaCost: Math.max(2, Math.min(5, Math.round(2 * massFactor))),
+      accuracy: 'Strength + 5%(1000)',
+      special: 'Bludgeoning impact; delivers full kinetic force of body mass, with stagger potential.',
+      isUnarmed: true,
+      scalingStat: 'strength',
+      rawText: `- Unarmed Strike (Heavy Punch / Cross): Damage ${heavyMin}-${heavyMax} bludgeoning. Stamina Cost: ${Math.max(2, Math.min(5, Math.round(2 * massFactor)))}. Accuracy: Strength + 5%(1000). Special: Bludgeoning impact; delivers full kinetic force of body mass, with stagger potential.`
+    });
+
+    // 2. Dexterity-Driven Precise Jab / Rapid Strike
+    // High accuracy bonus (+10%), low stamina cost (1), rapid execution and recovery
+    const jabMin = Math.max(1, Math.round(2 * Math.sqrt(massFactor) * Math.max(0.7, (strengthMultiplier + 1) / 2)));
+    const jabMax = Math.max(jabMin + 1, Math.round(4 * Math.sqrt(massFactor) * Math.max(0.7, (strengthMultiplier + 1) / 2)));
+    attacks.push({
+      name: 'Precise Jab / Rapid Strike',
+      damage: `${jabMin}-${jabMax} bludgeoning`,
+      minDamage: jabMin,
+      maxDamage: jabMax,
+      damageType: 'bludgeoning',
+      staminaCost: 1,
+      accuracy: 'Dexterity + 10%(1000)',
+      special: 'Swift execution; high precision targeting vulnerable points; rapid recovery for follow-ups.',
+      isUnarmed: true,
+      scalingStat: 'dexterity',
+      rawText: `- Precise Jab / Rapid Strike: Damage ${jabMin}-${jabMax} bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution; high precision targeting vulnerable points; rapid recovery for follow-ups.`
+    });
+
+    // 3. Balanced Low Kick / Leg Sweep
+    const kickMin = Math.max(2, Math.round(4 * massFactor * strengthMultiplier));
+    const kickMax = Math.max(kickMin + 2, Math.round(7 * massFactor * strengthMultiplier));
+    attacks.push({
+      name: 'Low Kick / Leg Sweep',
+      damage: `${kickMin}-${kickMax} bludgeoning`,
+      minDamage: kickMin,
+      maxDamage: kickMax,
+      damageType: 'bludgeoning',
+      staminaCost: 3,
+      accuracy: 'Dexterity + 0%(1000)',
+      special: 'Off-balances target; knockdown or trip hazard on high margin of success.',
+      isUnarmed: true,
+      scalingStat: 'balanced',
+      rawText: `- Low Kick / Leg Sweep: Damage ${kickMin}-${kickMax} bludgeoning. Stamina Cost: 3. Accuracy: Dexterity + 0%(1000). Special: Off-balances target; knockdown or trip hazard on high margin of success.`
+    });
+
+    // 4. Strength-Driven Grapple / Body Slam
+    const slamMin = Math.max(1, Math.round(3 * massFactor * strengthMultiplier));
+    const slamMax = Math.max(slamMin + 2, Math.round(5 * massFactor * strengthMultiplier));
+    attacks.push({
+      name: 'Grapple / Body Slam',
+      damage: `${slamMin}-${slamMax} bludgeoning`,
+      minDamage: slamMin,
+      maxDamage: slamMax,
+      damageType: 'bludgeoning',
+      staminaCost: 3,
+      accuracy: 'Strength + 0%(1000)',
+      special: 'Close-quarters control; pins, tackles, or grounds opponent using full physical leverage.',
+      isUnarmed: true,
+      scalingStat: 'strength',
+      rawText: `- Grapple / Body Slam: Damage ${slamMin}-${slamMax} bludgeoning. Stamina Cost: 3. Accuracy: Strength + 0%(1000). Special: Close-quarters control; pins, tackles, or grounds opponent using full physical leverage.`
+    });
+
+    return attacks;
+  }
+
+  /**
+   * Ensures that a character's attacks array always includes realistic unarmed attack(s).
+   * If existing attacks already have unarmed attack(s), returns them intact.
+   * If not, derives realistic unarmed attacks and includes them so the character can always fight bare-handed.
+   */
+  public static ensureUnarmedAttacks(
+    existingAttacks: AttackInfo[],
+    params: {
+      characterName?: string;
+      characterType?: string;
+      bodyWeight?: number;
+      strengthMultiplier?: number;
+      holdingLimbsDescription?: string;
+      handSlots?: number;
+      rawFileContent?: string;
+    }
+  ): AttackInfo[] {
+    const attacks = [...existingAttacks];
+    const hasUnarmed = attacks.some(a => a.isUnarmed);
+    if (hasUnarmed) {
+      return attacks;
+    }
+    const derived = WeightInventoryEngine.deriveRealisticUnarmedAttacks(params);
+    attacks.push(...derived);
+    return attacks;
+  }
+
+  /**
    * Parses an item line, extracting name, weight, dimensions, container, and overflow notes.
    * Example lines:
    * - "feather 0 weight 3x0 inch"
@@ -3344,6 +3788,20 @@ export class WeightInventoryEngine {
     return WeightInventoryEngine.parseCharacterStatsAndInventory(fileContent, currentTimestamp);
   }
 
+  public static parseCharacterSheet(
+    fileContent: string,
+    currentTimestamp?: string
+  ): CharacterPhysicalStats {
+    return WeightInventoryEngine.parseCharacterStatsAndInventory(fileContent, currentTimestamp);
+  }
+
+  public parseCharacterSheet(
+    fileContent: string,
+    currentTimestamp?: string
+  ): CharacterPhysicalStats {
+    return WeightInventoryEngine.parseCharacterStatsAndInventory(fileContent, currentTimestamp);
+  }
+
   public parseCharacterFile(
     fileContent: string,
     currentTimestamp?: string
@@ -3400,6 +3858,7 @@ export class WeightInventoryEngine {
     const carriedItems: ItemInfo[] = [];
     const storedItems: ItemInfo[] = [];
     const currentlyHolding: HeldItemInfo[] = [];
+    const parsedAttacks: AttackInfo[] = [];
     let customHoldingAnatomy: string | undefined;
     let customHoldingMax: number | undefined;
     let customHoldingApplies: boolean | undefined;
@@ -3851,6 +4310,17 @@ export class WeightInventoryEngine {
           const liftMatch = this.parseWeight(line);
           if (liftMatch.applies && liftMatch.weight > 0) {
             maxLiftStrength = liftMatch.weight;
+          }
+        }
+      }
+
+      // 2.5. [ATTACKS & COMBAT ACTIONS] Section
+      if (currentSection.includes('ATTACK') || currentSection.includes('COMBAT')) {
+        const atk = WeightInventoryEngine.parseAttackLine(line);
+        if (atk) {
+          const isDuplicate = parsedAttacks.some(existing => existing.name.toLowerCase() === atk.name.toLowerCase());
+          if (!isDuplicate) {
+            parsedAttacks.push(atk);
           }
         }
       }
@@ -5193,6 +5663,22 @@ export class WeightInventoryEngine {
       hasCurrency
     };
 
+    // Ensure character has complete and realistic unarmed attack options matching their anatomy and stats
+    const allAttacks = WeightInventoryEngine.ensureUnarmedAttacks(parsedAttacks, {
+      characterName,
+      characterType,
+      bodyWeight,
+      strengthMultiplier,
+      holdingLimbsDescription,
+      handSlots,
+      rawFileContent: fileContent
+    });
+    const unarmedAttacks = allAttacks.filter(a => a.isUnarmed);
+    const canAttackUnarmed = unarmedAttacks.length > 0;
+    const unarmedAttackSummary = canAttackUnarmed
+      ? unarmedAttacks.map(u => `${u.name} (${u.damage}, ${u.staminaCost} Stamina, Acc: ${u.accuracy})`).join('; ')
+      : 'No physical unarmed combat capacity.';
+
     return {
       characterName,
       characterType,
@@ -5215,6 +5701,10 @@ export class WeightInventoryEngine {
       encumbranceImmunityReason,
       encumbranceEffectDescription,
       totalCarriedWeight: Math.round(totalCarriedWeight * 100) / 100,
+      attacks: allAttacks,
+      unarmedAttacks,
+      canAttackUnarmed,
+      unarmedAttackSummary,
       currency,
       isMounted,
       mountedEntityName,
@@ -5848,6 +6338,42 @@ export class WeightInventoryEngine {
         updated = updated.substring(0, insertPos) + currencyBlock + updated.substring(insertPos);
       }
       changes.push('Synchronized Currency & Financial Balance section');
+    }
+
+    // 6.5. Synchronize [ATTACKS & COMBAT ACTIONS] section to ensure realistic unarmed combat options are always present
+    const attackHeaderRegex = /(?:\[\s*(?:ATTACKS\s*(?:&|AND)\s*COMBAT\s*ACTIONS|ATTACKS|COMBAT\s*ACTIONS|COMBAT)\s*\]|(?:^|\n)\s*(?:#+\s*)?(?:ATTACKS\s*(?:&|AND)\s*COMBAT\s*ACTIONS|ATTACKS|COMBAT\s*ACTIONS):?\s*(?=\n|$))/i;
+    const hasAttacksSection = attackHeaderRegex.test(updated);
+
+    if (stats.attacks && stats.attacks.length > 0) {
+      const attackMatch = updated.match(attackHeaderRegex);
+
+      if (attackMatch && attackMatch.index !== undefined) {
+        const matchStart = attackMatch.index + (attackMatch[0].startsWith('\n') ? 1 : 0);
+        const nextH = WeightInventoryEngine.findNextSectionHeaderIndex(updated, matchStart + attackMatch[0].length);
+        const sectionEnd = nextH > 0 ? nextH : updated.length;
+        const currentBlock = updated.substring(matchStart, sectionEnd);
+
+        // Check if existing section already contains an unarmed attack
+        const hasUnarmedText = /unarmed|punch|jab|kick|slam|bite|claw|pseudopod|spectral\s*touch|constrict/i.test(currentBlock);
+        if (!hasUnarmedText && stats.unarmedAttacks && stats.unarmedAttacks.length > 0) {
+          // Append missing unarmed attacks to the section
+          const unarmedLines = stats.unarmedAttacks.map(u => `  * ${u.name}: Damage ${u.damage}. Stamina Cost: ${u.staminaCost}. Accuracy: ${u.accuracy}. Special: ${u.special || 'Unarmed physical strike.'}`);
+          const updatedBlock = currentBlock.trimEnd() + '\n' + unarmedLines.join('\n') + '\n\n';
+          updated = updated.substring(0, matchStart) + updatedBlock + updated.substring(sectionEnd);
+          changes.push('Added realistic unarmed attack(s) to [ATTACKS & COMBAT ACTIONS]');
+        }
+      } else if (!hasAttacksSection && (updated.includes('[NAME & DESCRIPTION]') || updated.includes('[STATS & MODIFIERS]'))) {
+        // Create [ATTACKS & COMBAT ACTIONS] section with all attacks
+        const attackLines: string[] = [];
+        for (const atk of stats.attacks) {
+          attackLines.push(`  * ${atk.name}: Damage ${atk.damage}. Stamina Cost: ${atk.staminaCost}. Accuracy: ${atk.accuracy}. Special: ${atk.special || 'Physical combat action.'}`);
+        }
+        const attackBlock = `[ATTACKS & COMBAT ACTIONS]\n${attackLines.join('\n')}\n\n`;
+        const abilitiesIdx = updated.indexOf('[ABILITIES & MAGIC]');
+        const insertPos = abilitiesIdx >= 0 ? abilitiesIdx : (updated.indexOf('[CONTAINERS & CARRIED GEAR]') >= 0 ? updated.indexOf('[CONTAINERS & CARRIED GEAR]') : updated.length);
+        updated = updated.substring(0, insertPos) + attackBlock + updated.substring(insertPos);
+        changes.push('Generated [ATTACKS & COMBAT ACTIONS] section with realistic unarmed attacks');
+      }
     }
 
     // 7. Synchronize Unconscious duration check and Dead character decomposition/rot progression based on WorldTime

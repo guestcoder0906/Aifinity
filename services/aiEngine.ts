@@ -334,9 +334,17 @@ All character/NPC/Entity files MUST follow this structured format for consistenc
 - Total Net Worth: (Accurate sum of carried + stored wealth dynamically determined)
 
 [ATTACKS & COMBAT ACTIONS]
-- List every physical attack or standard action this entity can perform.
+- List every physical attack or standard action this entity can perform, INCLUDING their realistic unarmed attack(s).
+- UNARMED & NATURAL COMBAT MANDATE (CRITICAL): Every entity (player and NPC) MUST include their realistic unarmed attack(s) matching their anatomy and biological capabilities, even if they carry or equip weapons:
+  * Strength-Driven Heavy Strikes (e.g. "Unarmed Strike (Heavy Punch / Cross)", "Grapple / Body Slam", "Crushing Bite"): Damage scales directly with physical body mass/weight and Strength multiplier. High kinetic force, bludgeoning damage, chance to stagger or break guard.
+  * Dexterity-Driven Precise Strikes (e.g. "Precise Jab / Rapid Strike", "Nerve / Pressure Point Strike", "Claw Swipe"): Pinpoint accuracy bonus (+10%), fast execution, low stamina cost (1-2 stamina), high critical precision targeting exposed or vital anatomy.
+  * Leg / Sweeping Strikes (e.g. "Low Kick / Leg Sweep"): Balanced strength/dexterity, knockdown / trip hazard.
+  * Natural Predator & Creature Weapons: Accurately match biology (e.g. "Bite (Feral Jaws): Damage 4-8 piercing... bleed risk", "Claw Swipe: Damage 3-6 slashing", "Pseudopod Slam: bludgeoning / acid", "Spectral Chilling Touch: cold/necrotic bypassing physical armor").
+- NO WEAPON REQUIRED RULE: If a character is disarmed, drops their weapon, or chooses to fight bare-handed, combat actions MUST resolve smoothly using their realistic unarmed attack profile without requiring a weapon or failing the action.
 - Format: "AttackName: Damage X-Y. Stamina Cost: Z. Accuracy: stat + modifiers. Special: (Effects)".
-- Example: "Bite: Damage 10-15. Stamina Cost: 5. Accuracy: dexterity + 5%(1000). Special: Chance to bleed."
+- Example: "Unarmed Strike (Heavy Punch / Cross): Damage 4-7 bludgeoning. Stamina Cost: 2. Accuracy: Strength + 5%(1000). Special: Bludgeoning impact; high kinetic force with stagger potential."
+- Example: "Precise Jab / Rapid Strike: Damage 2-4 bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution; high precision targeting vulnerable points."
+- Example: "Bite (Feral Jaws): Damage 6-12 piercing. Stamina Cost: 3. Accuracy: Dexterity + 5%(1000). Special: Crushing puncture; latching grip with bleed risk."
 
 [ABILITIES & MAGIC]
 - List EVERY ability, spell, or special power this specific entity has.
@@ -707,6 +715,7 @@ Your ONLY goal is to analyze the player's action against the "World Context" and
 
 INSTRUCTIONS:
 1. AUDIT FOR CHECKS: Identify if the action requires a probability check (Combat, Stealth, Magic Focus, Physical feats, etc.).
+   - UNARMED COMBAT AUDIT RULE: When a player or NPC strikes, kicks, grapples, tackles, bites, or attacks without weapons, audit the check using their realistic unarmed attack capabilities: Heavy, forceful strikes audit against Strength (kinetic force and bludgeoning impact); swift, pinpoint strikes audit against Dexterity (vital precision and speed); and creature natural weapons audit their biological traits. Never require a weapon to audit or execute physical attacks.
    - RANDOM FIRST INTEGRITY: Do NOT generate, invent, choose, or output a roll number in "checks"! All rolls are rolled first via unbiased backend code randomness before outcome determination to prevent AI bias. You only detect the check name, reason, difficulty, stat, and modifiers.
 2. AUDIT FOR ENTITIES: List every individual NPC, group of NPCs, Weapon, Item, or Location mentioned that does NOT have a file in context.
 3. AUDIT FOR MAP: Determine if the player moved, environment changed, or new entities/landmarks/items appeared. Maps must have NOTHING missing within all players' observable and known areas, landmarks, items, npcs, structures, terrain features, etc. Always keep all observable and known elements updated correctly. Support advanced flexible shapes (oblong areas like forests via ellipse, irregular multi-point polygons, detailed architectural buildings such as market stalls and shops, paths/roads, circles, rects).
