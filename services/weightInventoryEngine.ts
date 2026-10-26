@@ -46,6 +46,10 @@ export interface ItemInfo {
   weight: number; // lbs
   dimensions: ParsedDimensions;
   category: 'equipped' | 'carried' | 'container' | 'stored';
+  volume?: number; // cubic inches
+  isStack?: boolean; // true if this item is a consolidated stack/bundle
+  stackCount?: number; // count of items in the stack
+  unitDimensions?: ParsedDimensions;
   sizeCategory?: ItemSizeCategory;
   sizeCategoryScore?: number; // 1, 2, 4, 6, 12, or 0
   sizePercentage?: number; // % relative to character scale
@@ -181,10 +185,16 @@ export interface AttackInfo {
   maxDamage?: number;
   damageType?: string; // e.g. "bludgeoning", "slashing", "piercing", "acid", "cold", "force"
   staminaCost: number; // e.g. 2
-  accuracy: string; // e.g. "Strength + 5%(1000)" or "Dexterity + 10%(1000)"
+  accuracy: string; // e.g. "Training Experience + 5%(1000)", "Dexterity + 10%(1000)", or "Strength / Leverage + 5%(1000)" for grapples
   special?: string;
   isUnarmed: boolean;
   scalingStat?: 'strength' | 'dexterity' | 'balanced' | string;
+  forceScalingStat?: string; // Force-oriented stat scaling base damage, penetration, knockdown
+  precisionScalingStat?: string; // Precision-oriented stat scaling 1,000-point threshold, crit placement, positioning
+  penetration?: number; // Armor penetration / piercing depth (force-scaled)
+  knockdownThreshold?: number; // Physical knockdown / stagger threshold (force-scaled)
+  criticalPlacementBonus?: number; // Bonus to critical placement against 1,000-point threshold (precision-scaled)
+  positionalExecutionBonus?: number; // Bonus to positional execution / maneuver margin against 1,000-point threshold (precision-scaled)
   rawText?: string;
 }
 
@@ -349,16 +359,170 @@ export class WeightInventoryEngine {
   }
 
   /**
+   * Helper to check whether an item is bulk, flat, or stackable (e.g. ammo, currency, bandages, paper, scrip, cards).
+   */
+  public static isStackableOrBulkItem(name: string, rawText?: string, dims?: ParsedDimensions): boolean {
+    const combined = `${name || ''} ${rawText || ''}`.toLowerCase();
+    if (
+      combined.includes('stack of') ||
+      combined.includes('bundle of') ||
+      combined.includes('pack of') ||
+      combined.includes('box of') ||
+      combined.includes('quiver of')
+    ) {
+      return true;
+    }
+
+    if (
+      /\b(?:ammo|ammunition|bullet|bullets|cartridge|cartridges|shell|shells|round|rounds|arrow|arrows|bolt|bolts|dart|darts|bandage|bandages|gauze|scrip|credit|credits|coin|coins|dollar|dollars|bill|bills|banknote|banknotes|cash|note|notes|paper|parchment|card|cards|chit|chits|ration|rations|cracker|crackers|wafer|wafers|match|matches|needle|needles|lockpick|lockpicks|patch|patches|token|tokens|chip|chips|pellet|pellets|pill|pills)\b/i.test(combined)
+    ) {
+      return true;
+    }
+
+    // Check geometric profile: if one dimension is distinctly thin (<= 0.5 inches or <= 25% of max dimension)
+    if (dims && dims.applies) {
+      const h = dims.height || 0;
+      const w = dims.width || 0;
+      const d = dims.depth || 0;
+      const valid = [h, w, d].filter(x => x > 0);
+      if (valid.length >= 2) {
+        const minDim = Math.min(...valid);
+        const maxDim = Math.max(...valid);
+        if (minDim <= 0.5 && maxDim > 0 && (minDim / maxDim) <= 0.25) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Extracts explicit volume in cubic inches from text (e.g. "4.8 cu in", "4.8 cubic inches", "Volume: 4.8 cu in").
+   */
+  public static parseExplicitVolume(text: string): number | undefined {
+    if (!text) return undefined;
+    const match = text.match(/(?:(?:total\s*)?volume[:=\s]+)?([0-9]+(?:\.[0-9]+)?)\s*(?:cu\s*in|cu\.\s*in|cubic\s*(?:in|inches|inch))\b/i);
+    return match ? parseFloat(match[1]) : undefined;
+  }
+
+  /**
+   * Calculates aggregate stack dimensions for multi-count flat or stackable items
+   * by multiplying ONLY the thickness axis while keeping length and width constant.
+   */
+  public static calculateConsolidatedBundle(
+    name: string,
+    count: number,
+    singleDims: ParsedDimensions,
+    explicitTotalDims?: ParsedDimensions,
+    explicitVolume?: number,
+    explicitWeight?: number,
+    singleWeight: number = 0.02
+  ): {
+    dimensions: ParsedDimensions;
+    volume: number;
+    weight: number;
+    singleDimensions: ParsedDimensions;
+    singleWeight: number;
+  } {
+    const totalCount = Math.max(1, count);
+    const sW = explicitWeight !== undefined && totalCount > 1
+      ? Math.round((explicitWeight / totalCount) * 10000) / 10000
+      : singleWeight;
+    const totW = explicitWeight !== undefined
+      ? explicitWeight
+      : Math.round(totalCount * sW * 100) / 100;
+
+    // If explicit total dimensions are supplied and marked as stack definition or already aggregate
+    if (explicitTotalDims && explicitTotalDims.applies && explicitTotalDims.height && explicitTotalDims.width) {
+      const h = explicitTotalDims.height;
+      const w = explicitTotalDims.width;
+      const d = explicitTotalDims.depth || 0.1;
+      const totVol = explicitVolume !== undefined
+        ? explicitVolume
+        : Math.round(h * w * d * 100) / 100;
+
+      return {
+        dimensions: explicitTotalDims,
+        volume: totVol,
+        weight: totW,
+        singleDimensions: singleDims,
+        singleWeight: sW
+      };
+    }
+
+    // Single item dimensions
+    const h = singleDims.height || 1.2;
+    const w = singleDims.width || 1.2;
+    const d = singleDims.depth || 0.08;
+
+    // Identify the two largest dimensions (Length and Width) which stay CONSTANT
+    const sorted = [h, w, d].sort((a, b) => b - a);
+    const length = sorted[0];
+    const width = sorted[1];
+    const thickness = sorted[2];
+
+    const lower = name.toLowerCase();
+
+    // Multiply ONLY the thickness axis:
+    let aggregateThickness = thickness;
+    if (totalCount > 1) {
+      if (/scrip|paper|banknote|bill|cash|note|card|parchment/i.test(lower)) {
+        // Standard banknote / scrip sheet compressed thickness is ~0.0067 in per note
+        // 45 sheets -> 45 * 0.0067 = 0.3 in!
+        aggregateThickness = Math.max(0.1, Math.round(totalCount * 0.0067 * 10) / 10);
+      } else if (/bandage|gauze|cloth|patch/i.test(lower)) {
+        // Bandages fold/compress into neat packs
+        aggregateThickness = Math.max(0.1, Math.round(totalCount * Math.min(thickness, 0.02) * 10) / 10);
+      } else if (/coin|penny|cent|dime|quarter|dollar|token|chip/i.test(lower)) {
+        // Coins stack or pouch pack
+        aggregateThickness = Math.min(4.0, Math.round(thickness * Math.sqrt(totalCount) * 0.4 * 10) / 10);
+      } else if (/ammo|bullet|cartridge|round|shell/i.test(lower)) {
+        // Ammo box / tray aggregation
+        aggregateThickness = Math.max(0.5, Math.round(Math.cbrt(totalCount) * thickness * 10) / 10);
+      } else {
+        // General flat stackable items: thickness scales with realistic compression
+        aggregateThickness = Math.max(0.1, Math.round(totalCount * thickness * 0.1 * 10) / 10);
+      }
+    }
+
+    const bundleDimRaw = `${length}x${width}x${aggregateThickness} inches`;
+    const bundleDims: ParsedDimensions = {
+      height: length,
+      width: width,
+      depth: aggregateThickness,
+      raw: bundleDimRaw,
+      applies: true,
+      unit: 'inches'
+    };
+
+    const totVol = explicitVolume !== undefined
+      ? explicitVolume
+      : Math.round(length * width * aggregateThickness * 100) / 100;
+
+    return {
+      dimensions: bundleDims,
+      volume: totVol,
+      weight: totW,
+      singleDimensions: singleDims,
+      singleWeight: sW
+    };
+  }
+
+  /**
    * Infers single-unit dimensions, volume, weight, and digital status for currency items,
    * and calculates the multiplied total dimensions and volume for the full currency stack (amount pieces).
    * Physical currency is NOT infinite space and has dimensions/volume.
-   * Digital money (credits, crypto, bank deposits) takes 0 volume/space.
+   * Multi-count flat or stackable currencies (e.g. scrip, paper bills, coins) are evaluated
+   * as a single consolidated bundle multiplying ONLY the thickness axis while keeping length & width constant.
    */
   public static inferCurrencyDefaults(
     name: string,
     explicitDims?: string,
     explicitWeight?: number,
-    amount: number = 1
+    amount: number = 1,
+    explicitVolume?: number,
+    isStackDef?: boolean
   ): {
     dimensions: ParsedDimensions;
     singleDimensions: ParsedDimensions;
@@ -427,6 +591,46 @@ export class WeightInventoryEngine {
         ? Math.round((explicitWeight / amount) * 10000) / 10000
         : (lower.includes('morgan') || lower.includes('dollar') ? 0.06 : 0.02);
       defaultWorth = lower.includes('dollar') ? '$1.00' : '1 Coin';
+
+      if (isStackDef) {
+        // Provided dimensions ARE already the stack dimensions directly!
+        const totalW = explicitWeight !== undefined ? explicitWeight : Math.round(amount * singleW * 100) / 100;
+        const totalVol = explicitVolume !== undefined ? explicitVolume : Math.round(h * w * d * 100) / 100;
+        return {
+          dimensions: parsedDim,
+          singleDimensions: singleDim,
+          singleDimensionsRaw: singleDim.raw,
+          isDigital: false,
+          singleWeight: singleW,
+          totalWeight: totalW,
+          unitVolume: Math.round((totalVol / Math.max(1, amount)) * 10000) / 10000,
+          totalVolume: totalVol,
+          defaultWorth
+        };
+      } else if (amount > 1 && WeightInventoryEngine.isStackableOrBulkItem(name, undefined, parsedDim)) {
+        // Multi-count flat or stackable currency with single dimensions:
+        // Multiply ONLY the thickness axis while keeping length and width constant!
+        const bundle = WeightInventoryEngine.calculateConsolidatedBundle(
+          name,
+          amount,
+          singleDim,
+          undefined,
+          explicitVolume,
+          explicitWeight,
+          singleW
+        );
+        return {
+          dimensions: bundle.dimensions,
+          singleDimensions: singleDim,
+          singleDimensionsRaw: singleDim.raw,
+          isDigital: false,
+          singleWeight: singleW,
+          totalWeight: bundle.weight,
+          unitVolume: Math.round((bundle.volume / Math.max(1, amount)) * 10000) / 10000,
+          totalVolume: bundle.volume,
+          defaultWorth
+        };
+      }
     } else if (/morgan|silver\s*dollar|large\s*dollar|trade\s*dollar|peace\s*dollar|double\s*eagle/i.test(lower)) {
       // 1. Large historical coins (e.g. Morgan Dollar, Peace Dollar, Silver Dollar, Double Eagle)
       singleDim = this.parseDimensions('1.5x1.5x0.09 inches');
@@ -473,23 +677,27 @@ export class WeightInventoryEngine {
 
     const singleRaw = singleDim.raw || `${singleDim.height}x${singleDim.width}x${singleDim.depth} inches`;
     const totalW = explicitWeight !== undefined ? explicitWeight : Math.round(amount * singleW * 100) / 100;
-    const totalVol = Math.round(amount * unitVol * 1.15 * 100) / 100;
 
-    // Calculate multiplied 3D stack/bundle dimensions for amount pieces of physical currency
-    // Loose coins in a pouch/container pack together flexibly rather than forming a rigid oversized slab
+    // Calculate consolidated bundle dimensions and volume:
+    // Multi-count flat or stackable currency scales ONLY along the thickness axis
     let stackDim: ParsedDimensions = singleDim;
-    if (amount > 1) {
-      const stackH = Math.min(4.0, Math.round((singleDim.height + Math.cbrt(amount) * 0.25) * 10) / 10);
-      const stackW = Math.min(4.0, Math.round((singleDim.width + Math.cbrt(amount) * 0.25) * 10) / 10);
-      const stackD = Math.min(4.0, Math.round((singleDim.depth * Math.sqrt(amount) * 0.4) * 10) / 10);
-      stackDim = {
-        height: stackH,
-        width: stackW,
-        depth: stackD,
-        raw: `${stackH}x${stackW}x${stackD} inches`,
-        applies: true,
-        unit: 'inches'
-      };
+    let totalVol = explicitVolume !== undefined ? explicitVolume : Math.round(amount * unitVol * 1.15 * 100) / 100;
+
+    if (isStackDef) {
+      stackDim = singleDim;
+      totalVol = explicitVolume !== undefined ? explicitVolume : Math.round((singleDim.height || 1) * (singleDim.width || 1) * (singleDim.depth || 1) * 100) / 100;
+    } else if (amount > 1) {
+      const bundle = WeightInventoryEngine.calculateConsolidatedBundle(
+        name,
+        amount,
+        singleDim,
+        undefined,
+        explicitVolume,
+        explicitWeight,
+        singleW
+      );
+      stackDim = bundle.dimensions;
+      totalVol = bundle.volume;
     }
 
     return {
@@ -678,7 +886,15 @@ export class WeightInventoryEngine {
     const dimMatch = cleanedLine.match(/(?:dimensions?|dims?|size)[:=\s]+([^|;,\(\)]+)/i);
     if (dimMatch) {
       entryDimsStr = dimMatch[1].trim();
+    } else {
+      const parenDimMatch = cleanedLine.match(/\b([0-9]+(?:\.[0-9]+)?\s*x\s*[0-9]+(?:\.[0-9]+)?(?:\s*x\s*[0-9]+(?:\.[0-9]+)?)?\s*(?:in|inch|inches|cm|mm)?)\b/i);
+      if (parenDimMatch) {
+        entryDimsStr = parenDimMatch[1].trim();
+      }
     }
+
+    // Extract explicit volume if specified: e.g. "4.8 cu in", "4.8 cubic inches", "Volume: 4.8 cu in"
+    const entryExplicitVol = WeightInventoryEngine.parseExplicitVolume(cleanedLine);
 
     // Extract worth if specified on line: e.g. "Worth: $1.00" or "Value: 1 GP"
     let entryWorthStr: string | undefined;
@@ -727,6 +943,84 @@ export class WeightInventoryEngine {
     const strippedScan = contentToScan.replace(/[|;()\[\]]+/g, ' ').replace(/^[-*•>\s]+/, '').replace(/\s+/g, ' ').trim();
 
     // =========================================================================
+    // Format S: Consolidated Stack/Bundle pattern
+    // e.g.:
+    // "1x Stack of 45 [Sol-Standard Scrip] (4x4x0.3 in, 0.15 lbs, 4.8 cu in)"
+    // "Stack of 45 [Sol-Standard Scrip] (4x4x0.3 in, 0.15 lbs, 4.8 cu in)"
+    // =========================================================================
+    const stackPattern = /(?:([0-9]+(?:\.[0-9]+)?)\s*x\s*)?stack\s+of\s+([0-9]+(?:\.[0-9]+)?)\s*(?:\[([^\]]+)\]|"([^"]+)"|'([^']+)'|([a-zA-Z0-9_\s'-]+?))(?:\s*\(|\s*\||\s*\[|\s*$)/i;
+    const stackMatch = cleanedLine.match(stackPattern);
+    if (stackMatch) {
+      const stackUnits = stackMatch[1] ? parseFloat(stackMatch[1]) : 1;
+      const stackCount = parseFloat(stackMatch[2]);
+      let rawName = (stackMatch[3] || stackMatch[4] || stackMatch[5] || stackMatch[6] || '').trim();
+      rawName = WeightInventoryEngine.sanitizeCurrencyName(rawName);
+      if (rawName && !WeightInventoryEngine.isContainerName(rawName)) {
+        const totalAmt = stackCount * stackUnits;
+        const defs = this.inferCurrencyDefaults(rawName, entryDimsStr, entryWeight, totalAmt, entryExplicitVol, true);
+        entries.push({
+          name: rawName,
+          amount: totalAmt,
+          worth: WeightInventoryEngine.sanitizeCurrencyWorth(entryWorthStr || defs.defaultWorth, rawName),
+          dimensions: defs.dimensions,
+          singleDimensions: defs.singleDimensions,
+          singleDimensionsRaw: defs.singleDimensionsRaw,
+          isDigital: defs.isDigital,
+          unitVolume: defs.unitVolume,
+          totalVolume: defs.totalVolume,
+          singleWeight: defs.singleWeight,
+          weight: entryWeight !== undefined ? entryWeight : defs.totalWeight,
+          container,
+          location,
+          isHiddenLocation,
+          rawText: cleanedLine
+        });
+        return entries;
+      }
+    }
+
+    // =========================================================================
+    // Format S2: "Amount: 45x [Sol-Standard Scrip] (4x4x0.1 in)" or "45x [Sol-Standard Scrip]"
+    // Evaluates multi-count flat currency as consolidated bundle
+    // =========================================================================
+    const amountBracketMatch = cleanedLine.match(/(?:^|\||;|\s)*(?:(?:amount|quantity|qty|count)[:=\s]+)?([0-9]+(?:\.[0-9]+)?)\s*x\s*\[([^\]]+)\]/i);
+    if (amountBracketMatch) {
+      let rawName = amountBracketMatch[2].trim();
+      if (rawName.includes('[Location:')) rawName = rawName.split(/\[Location:/i)[0].trim();
+      else if (rawName.includes('Location:')) rawName = rawName.split(/Location:/i)[0].trim();
+      rawName = WeightInventoryEngine.sanitizeCurrencyName(rawName);
+      if (
+        rawName &&
+        !WeightInventoryEngine.isContainerName(rawName) &&
+        !/chase|bank account|vault|stash|home|safe|hide\[/i.test(rawName) &&
+        (/scrip|credit|coin|dollar|cash|money|cent|penny|gold|silver|copper|ingot|bill|note|chit/i.test(rawName) ||
+         cleanedLine.toLowerCase().includes('worth:') ||
+         cleanedLine.toLowerCase().includes('value:'))
+      ) {
+        const amt = parseFloat(amountBracketMatch[1]);
+        const defs = this.inferCurrencyDefaults(rawName, entryDimsStr, entryWeight, amt, entryExplicitVol, false);
+        entries.push({
+          name: rawName,
+          amount: amt,
+          worth: WeightInventoryEngine.sanitizeCurrencyWorth(entryWorthStr || defs.defaultWorth, rawName),
+          dimensions: defs.dimensions,
+          singleDimensions: defs.singleDimensions,
+          singleDimensionsRaw: defs.singleDimensionsRaw,
+          isDigital: defs.isDigital,
+          unitVolume: defs.unitVolume,
+          totalVolume: defs.totalVolume,
+          singleWeight: defs.singleWeight,
+          weight: entryWeight !== undefined ? entryWeight : defs.totalWeight,
+          container,
+          location,
+          isHiddenLocation,
+          rawText: cleanedLine
+        });
+        return entries;
+      }
+    }
+
+    // =========================================================================
     // Format A: Explicit Name format and Amount format separated!
     // e.g.:
     // "* Name: [1921 Morgan Dollar Coin] | Amount: 1 | Worth: $1.00 | Dimensions: ... | Weight: ... [Container: ...]"
@@ -742,7 +1036,7 @@ export class WeightInventoryEngine {
       if (rawName && rawName.toLowerCase() !== 'none' && rawName !== '0' && !WeightInventoryEngine.isContainerName(rawName)) {
         let amt = explicitAmtMatch ? parseFloat(explicitAmtMatch[1]) : (explicitQty !== undefined ? explicitQty : 1);
         if (isNaN(amt) || amt <= 0) amt = 1;
-        const defs = this.inferCurrencyDefaults(rawName, entryDimsStr, entryWeight, amt);
+        const defs = this.inferCurrencyDefaults(rawName, entryDimsStr, entryWeight, amt, entryExplicitVol);
         entries.push({
           name: rawName,
           amount: amt,
@@ -793,7 +1087,7 @@ export class WeightInventoryEngine {
           amt = explicitQty;
         }
 
-        const defs = this.inferCurrencyDefaults(innerName, entryDimsStr, entryWeight, amt);
+        const defs = this.inferCurrencyDefaults(innerName, entryDimsStr, entryWeight, amt, entryExplicitVol);
         entries.push({
           name: innerName,
           amount: amt,
@@ -1787,7 +2081,7 @@ export class WeightInventoryEngine {
    *    (wallets = 1.5x, pouches = 1.3x) can stretch beyond base space up to their multiplier before overflowing.
    */
   public static checkContainerFit(
-    item: { name: string; weight?: number; dimensions: ParsedDimensions; rawText?: string },
+    item: { name: string; weight?: number; dimensions: ParsedDimensions; volume?: number; rawText?: string },
     containerMaxDim: ParsedDimensions,
     containerCapacity?: {
       maxWeight?: number;
@@ -1868,7 +2162,10 @@ export class WeightInventoryEngine {
     }
 
     // Check container volume limit with stretchability / elasticity
-    const itemVol = itemDims.reduce((a, b) => a * b, 1);
+    // Respects consolidated bundle volume when provided, preventing false overflow
+    const itemVol = item.volume !== undefined
+      ? item.volume
+      : (WeightInventoryEngine.parseExplicitVolume(item.rawText || '') ?? itemDims.reduce((a, b) => a * b, 1));
     let itemIsStretched = false;
     if (containerCapacity?.maxVolume && containerCapacity.maxVolume > 0) {
       const baseVol = containerCapacity.maxVolume;
@@ -1906,7 +2203,6 @@ export class WeightInventoryEngine {
     if (isFoldable) {
       // Foldable items fold and compress to fit inside typical containers.
       // They do NOT overflow simply because flat unfolded length/width exceeds the container.
-      const itemVol = itemDims.reduce((a, b) => a * b, 1);
       const contVol = contDims.reduce((a, b) => a * b, 1);
 
       // Only if raw uncompressed material volume itself exceeds the container internal volume by a wide margin
@@ -2939,6 +3235,87 @@ export class WeightInventoryEngine {
   }
 
   /**
+   * Dynamically determines whether an attribute or stat is precision-oriented
+   * (e.g. Dexterity, Agility, Reflexes, Aim, Finesse, Coordination, Precision, Balance).
+   * Context-sensitive with no rigid single keyword requirement.
+   */
+  public static isPrecisionAttribute(attrName?: string): boolean {
+    if (!attrName) return false;
+    const clean = attrName.trim().toLowerCase();
+    return /\b(?:dexterity|dex|agility|agil|reflexes?|reflexive|aim|aiming|finesse|precision|precise|coordination|hand-eye|balance|swiftness|quickness|speed_reflex|accuracy)\b/i.test(clean);
+  }
+
+  /**
+   * Dynamically determines whether an attribute or stat is force-oriented
+   * (e.g. Strength, Pneumatic / Hydraulic Power, Kinetic Force, Mass / Brawn, Torque, Muscle, Output).
+   * Context-sensitive with no rigid single keyword requirement.
+   */
+  public static isForceAttribute(attrName?: string): boolean {
+    if (!attrName) return false;
+    const clean = attrName.trim().toLowerCase();
+    return /\b(?:strength|str|power|force|kinetic|pneumatic|hydraulic|torque|brawn|muscle|mass|body_weight|payload|brute|impact|thrust|raw_power|mechanical_force)\b/i.test(clean);
+  }
+
+  /**
+   * Consistent dynamic scaling resolution across all combat actions, maneuvers, and physical checks:
+   * - Precision-oriented attributes (Dexterity, Agility) NEVER directly amplify raw damage or impact potency,
+   *   but apply bonuses strictly to the 1,000-point success threshold to dictate hit confirmation,
+   *   critical placement, and positional execution.
+   * - Force-oriented attributes (Strength, Pneumatic/Hydraulic Power) exclusively scale base damage,
+   *   penetration values, and physical knockdown thresholds.
+   */
+  public static resolveCombatActionScaling(params: {
+    baseDamageMin: number;
+    baseDamageMax: number;
+    forceMultiplier?: number;
+    precisionRating?: number;
+    forceAttributeName?: string;
+    precisionAttributeName?: string;
+    actionType?: 'attack' | 'maneuver' | 'physical_check' | string;
+  }): {
+    minDamage: number;
+    maxDamage: number;
+    penetration: number;
+    knockdownThreshold: number;
+    thresholdBonus: number; // Applied strictly to 1,000-point success threshold (lowering required roll)
+    criticalPlacementBonus: number; // Expands critical hit range against 1,000-point threshold
+    positionalExecutionBonus: number; // Positional execution margin against 1,000-point threshold
+    explanation: string;
+  } {
+    const forceMult = Math.max(0.1, params.forceMultiplier !== undefined ? params.forceMultiplier : 1.0);
+    const precisionVal = params.precisionRating || 0;
+
+    // Force-oriented attributes exclusively scale base damage, penetration values, and physical knockdown thresholds
+    const minDamage = Math.max(1, Math.round(params.baseDamageMin * forceMult));
+    const maxDamage = Math.max(minDamage, Math.round(params.baseDamageMax * forceMult));
+    const penetration = Math.max(0, Math.round((params.baseDamageMin * 0.3) * forceMult));
+    const knockdownThreshold = Math.max(0, Math.round((minDamage * 2.5 + maxDamage * 1.5) * forceMult));
+
+    // Precision-oriented attributes NEVER directly amplify raw damage or impact potency.
+    // Instead, they apply their bonuses strictly to the 1,000-point success threshold.
+    let thresholdBonus = 0;
+    if (precisionVal > 0) {
+      thresholdBonus = precisionVal > 1 ? Math.min(400, Math.round(precisionVal * 10)) : Math.min(400, Math.round(precisionVal * 1000));
+    }
+
+    // Critical placement bonus (improves critical placement against 1000 threshold):
+    const criticalPlacementBonus = Math.round(thresholdBonus * 1.5);
+    // Positional execution bonus (improves maneuver and positioning success against 1000 threshold):
+    const positionalExecutionBonus = Math.round(thresholdBonus * 1.2);
+
+    return {
+      minDamage,
+      maxDamage,
+      penetration,
+      knockdownThreshold,
+      thresholdBonus,
+      criticalPlacementBonus,
+      positionalExecutionBonus,
+      explanation: `Force scales base damage (${minDamage}-${maxDamage}), penetration (${penetration}), and knockdown (${knockdownThreshold}). Precision never scales raw damage, applying +${thresholdBonus} strictly to the 1,000-point success threshold for hit confirmation, critical placement (+${criticalPlacementBonus}), and positional execution (+${positionalExecutionBonus}).`
+    };
+  }
+
+  /**
    * Parses an attack or combat action line.
    * Handles patterns such as:
    * - "Unarmed Strike (Heavy Punch / Cross): Damage 4-7 bludgeoning. Stamina Cost: 2. Accuracy: Strength + 5%(1000). Special: Bludgeoning impact."
@@ -3034,15 +3411,59 @@ export class WeightInventoryEngine {
       special = specMatch[1].trim();
     }
 
+    // Parse Penetration (Force-scaled)
+    let penetration: number | undefined;
+    const penMatch = body.match(/(?:penetration|piercing\s*val(?:ue)?|armor\s*piercing|ap)[:=\s]*([0-9]+(?:\.[0-9]+)?)/i);
+    if (penMatch) {
+      penetration = parseFloat(penMatch[1]);
+    }
+
+    // Parse Knockdown / Stagger Threshold (Force-scaled)
+    let knockdownThreshold: number | undefined;
+    const kdMatch = body.match(/(?:knockdown(?:\s*threshold)?|stagger(?:\s*threshold)?|trip\s*threshold)[:=\s]*([0-9]+(?:\.[0-9]+)?)/i);
+    if (kdMatch) {
+      knockdownThreshold = parseFloat(kdMatch[1]);
+    }
+
+    // Parse Critical Placement Bonus (Precision-scaled)
+    let criticalPlacementBonus: number | undefined;
+    const critMatch = body.match(/(?:crit(?:ical)?(?:\s*placement)?(?:\s*bonus)?|critical\s*bonus)[:=\s]*([+-]?[0-9]+(?:\.[0-9]+)?%?)/i);
+    if (critMatch) {
+      const cStr = critMatch[1].trim();
+      criticalPlacementBonus = cStr.endsWith('%') ? (parseFloat(cStr) / 100) * 1000 : parseFloat(cStr);
+    }
+
+    // Parse Positional Execution Bonus (Precision-scaled)
+    let positionalExecutionBonus: number | undefined;
+    const posMatch = body.match(/(?:position(?:al)?(?:\s*execution)?(?:\s*bonus)?|maneuver\s*bonus)[:=\s]*([+-]?[0-9]+(?:\.[0-9]+)?%?)/i);
+    if (posMatch) {
+      const pStr = posMatch[1].trim();
+      positionalExecutionBonus = pStr.endsWith('%') ? (parseFloat(pStr) / 100) * 1000 : parseFloat(pStr);
+    }
+
     // Determine scaling stat (Strength vs Dexterity vs Balanced)
     let scalingStat: 'strength' | 'dexterity' | 'balanced' | string = 'strength';
+    let forceScalingStat: string | undefined;
+    let precisionScalingStat: string | undefined;
+
     const comboText = `${name} ${body}`.toLowerCase();
     if (comboText.includes('dexterity') || comboText.includes('dex') || comboText.includes('precision') || comboText.includes('agility') || comboText.includes('swift')) {
       scalingStat = 'dexterity';
+      precisionScalingStat = 'dexterity';
     } else if (comboText.includes('balanced') || comboText.includes('dex/str') || comboText.includes('str/dex')) {
       scalingStat = 'balanced';
+      precisionScalingStat = 'dexterity';
+      forceScalingStat = 'strength';
     } else if (comboText.includes('strength') || comboText.includes('str') || comboText.includes('power') || comboText.includes('heavy') || comboText.includes('bludgeon')) {
       scalingStat = 'strength';
+      forceScalingStat = 'strength';
+    }
+
+    if (WeightInventoryEngine.isForceAttribute(accuracy) || WeightInventoryEngine.isForceAttribute(body)) {
+      forceScalingStat = forceScalingStat || 'strength';
+    }
+    if (WeightInventoryEngine.isPrecisionAttribute(accuracy) || WeightInventoryEngine.isPrecisionAttribute(body)) {
+      precisionScalingStat = precisionScalingStat || 'dexterity';
     }
 
     // Determine isUnarmed:
@@ -3091,6 +3512,12 @@ export class WeightInventoryEngine {
       special,
       isUnarmed,
       scalingStat,
+      forceScalingStat,
+      precisionScalingStat,
+      penetration,
+      knockdownThreshold,
+      criticalPlacementBonus,
+      positionalExecutionBonus,
       rawText: line.trim()
     };
   }
@@ -3146,11 +3573,14 @@ export class WeightInventoryEngine {
         maxDamage: maxDmg,
         damageType: 'bludgeoning',
         staminaCost: 2,
-        accuracy: 'Strength + 5%(1000)',
-        special: 'High-viscosity impact; can strike from flexible, shifting angles.',
+        accuracy: 'Combat Instinct / Technique + 5%(1000)',
+        special: 'High-viscosity impact; force scales base damage, penetration, and knockdown threshold; instinct and technique determine accuracy.',
         isUnarmed: true,
         scalingStat: 'strength',
-        rawText: `- Unarmed Strike (Pseudopod Slam): Damage ${minDmg}-${maxDmg} bludgeoning. Stamina Cost: 2. Accuracy: Strength + 5%(1000). Special: High-viscosity impact; can strike from flexible, shifting angles.`
+        forceScalingStat: 'strength',
+        penetration: Math.max(1, Math.round(2 * strengthMultiplier)),
+        knockdownThreshold: Math.max(10, Math.round(15 * massFactor * strengthMultiplier)),
+        rawText: `- Unarmed Strike (Pseudopod Slam): Damage ${minDmg}-${maxDmg} bludgeoning. Stamina Cost: 2. Accuracy: Combat Instinct / Technique + 5%(1000). Special: High-viscosity impact; force scales base damage, penetration (${Math.max(1, Math.round(2 * strengthMultiplier))}), and knockdown threshold (${Math.max(10, Math.round(15 * massFactor * strengthMultiplier))}); strength does not dictate accuracy.`
       });
 
       const acidMin = Math.max(2, Math.round(2 * massFactor));
@@ -3163,10 +3593,13 @@ export class WeightInventoryEngine {
         damageType: 'acid',
         staminaCost: 2,
         accuracy: 'Dexterity + 10%(1000)',
-        special: 'Acidic contact dissolves organic matter and corrodes mundane material.',
+        special: 'Acidic contact dissolves organic matter; precision bonus applies strictly to 1,000-point threshold for hit confirmation, critical placement (+150), and engulfing positional execution.',
         isUnarmed: true,
         scalingStat: 'dexterity',
-        rawText: `- Corrosive Touch (Acidic Engulf): Damage ${acidMin}-${acidMax} acid. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Acidic contact dissolves organic matter and corrodes mundane material.`
+        precisionScalingStat: 'dexterity',
+        criticalPlacementBonus: 150,
+        positionalExecutionBonus: 100,
+        rawText: `- Corrosive Touch (Acidic Engulf): Damage ${acidMin}-${acidMax} acid. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Acidic contact dissolves organic matter; precision applies strictly to 1,000-point threshold for hit confirmation and critical placement without raw damage amplification.`
       });
       return attacks;
     }
@@ -3183,10 +3616,15 @@ export class WeightInventoryEngine {
         damageType: 'cold',
         staminaCost: 2,
         accuracy: 'Dexterity + 10%(1000)',
-        special: 'Phases directly through physical armor to leech metabolic warmth.',
+        special: 'Phases directly through physical armor to leech metabolic warmth; precision applies strictly to 1,000-point threshold (+100 hit confirmation, +200 critical placement, +150 positioning).',
         isUnarmed: true,
         scalingStat: 'dexterity',
-        rawText: `- Spectral Chilling Touch: Damage ${minDmg}-${maxDmg} cold/necrotic. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Phases directly through physical armor to leech metabolic warmth.`
+        precisionScalingStat: 'dexterity',
+        penetration: 999,
+        knockdownThreshold: 0,
+        criticalPlacementBonus: 200,
+        positionalExecutionBonus: 150,
+        rawText: `- Spectral Chilling Touch: Damage ${minDmg}-${maxDmg} cold/necrotic. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Phases directly through physical armor; precision applies strictly to 1,000-point threshold without altering raw damage.`
       });
       return attacks;
     }
@@ -3202,11 +3640,14 @@ export class WeightInventoryEngine {
         maxDamage: constrictMax,
         damageType: 'bludgeoning',
         staminaCost: 3,
-        accuracy: 'Strength + 5%(1000)',
-        special: 'Suffocates and crushes target; immobilizes on partial or full success.',
+        accuracy: 'Strength / Constriction + 5%(1000)',
+        special: 'Suffocates and crushes target; muscular strength determines hold success to keep target grappled; force scales base damage, penetration, and pin threshold.',
         isUnarmed: true,
         scalingStat: 'strength',
-        rawText: `- Coil Constriction: Damage ${constrictMin}-${constrictMax} bludgeoning. Stamina Cost: 3. Accuracy: Strength + 5%(1000). Special: Suffocates and crushes target; immobilizes on partial or full success.`
+        forceScalingStat: 'strength',
+        penetration: Math.max(1, Math.round(2 * strengthMultiplier)),
+        knockdownThreshold: Math.max(15, Math.round(20 * massFactor * strengthMultiplier)),
+        rawText: `- Coil Constriction: Damage ${constrictMin}-${constrictMax} bludgeoning. Stamina Cost: 3. Accuracy / Hold: Strength / Constriction + 5%(1000). Special: Muscular wrap and compression; strength determines success of maintaining the constriction hold; force scales damage (${constrictMin}-${constrictMax}) and pin threshold (${Math.max(15, Math.round(20 * massFactor * strengthMultiplier))}).`
       });
 
       const fangMin = Math.max(1, Math.round(2 * massFactor));
@@ -3219,10 +3660,14 @@ export class WeightInventoryEngine {
         damageType: 'piercing',
         staminaCost: 1,
         accuracy: 'Dexterity + 10%(1000)',
-        special: 'Lightning-fast lunging strike; precise targeting of exposed flesh.',
+        special: 'Lightning-fast lunging strike; precision applies strictly to 1,000-point threshold (+100 hit confirmation, +150 critical placement against exposed flesh).',
         isUnarmed: true,
         scalingStat: 'dexterity',
-        rawText: `- Fanged Strike: Damage ${fangMin}-${fangMax} piercing. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Lightning-fast lunging strike; precise targeting of exposed flesh.`
+        precisionScalingStat: 'dexterity',
+        penetration: Math.max(1, Math.round(1.5 * strengthMultiplier)),
+        criticalPlacementBonus: 150,
+        positionalExecutionBonus: 100,
+        rawText: `- Fanged Strike: Damage ${fangMin}-${fangMax} piercing. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Lightning-fast lunging strike; precision scales 1,000-point threshold (+100 hit confirmation, +150 critical placement) without raw damage amplification.`
       });
       return attacks;
     }
@@ -3238,11 +3683,14 @@ export class WeightInventoryEngine {
         maxDamage: biteMax,
         damageType: 'piercing',
         staminaCost: 3,
-        accuracy: 'Strength + 5%(1000)',
-        special: 'Crushing jaw force; latching grip with severe puncture and bleed risk.',
+        accuracy: 'Predatory Reflexes / Instinct + 5%(1000)',
+        special: 'Crushing jaw force; force scales base damage, penetration, and knockdown threshold; predatory reflexes dictate bite accuracy.',
         isUnarmed: true,
         scalingStat: 'strength',
-        rawText: `- Bite (Feral Jaws): Damage ${biteMin}-${biteMax} piercing. Stamina Cost: 3. Accuracy: Strength + 5%(1000). Special: Crushing jaw force; latching grip with severe puncture and bleed risk.`
+        forceScalingStat: 'strength',
+        penetration: Math.max(2, Math.round(3 * strengthMultiplier)),
+        knockdownThreshold: Math.max(12, Math.round(16 * massFactor * strengthMultiplier)),
+        rawText: `- Bite (Feral Jaws): Damage ${biteMin}-${biteMax} piercing. Stamina Cost: 3. Accuracy: Predatory Reflexes / Instinct + 5%(1000). Special: Crushing jaw force; force scales base damage, penetration (${Math.max(2, Math.round(3 * strengthMultiplier))}), and knockdown threshold (${Math.max(12, Math.round(16 * massFactor * strengthMultiplier))}); jaw strength does not boost accuracy.`
       });
 
       const clawMin = Math.max(2, Math.round(3 * massFactor * strengthMultiplier));
@@ -3255,10 +3703,16 @@ export class WeightInventoryEngine {
         damageType: 'slashing',
         staminaCost: 2,
         accuracy: 'Dexterity + 10%(1000)',
-        special: 'Fast raking slash; critical precision on exposed vitals.',
+        special: 'Fast raking slash; precision applies strictly to 1,000-point threshold (+100 hit confirmation, +150 critical placement); force scales base damage and penetration.',
         isUnarmed: true,
         scalingStat: 'dexterity',
-        rawText: `- Claw Swipe / Pounce: Damage ${clawMin}-${clawMax} slashing. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Fast raking slash; critical precision on exposed vitals.`
+        precisionScalingStat: 'dexterity',
+        forceScalingStat: 'strength',
+        penetration: Math.max(1, Math.round(1.5 * strengthMultiplier)),
+        knockdownThreshold: Math.max(8, Math.round(10 * massFactor * strengthMultiplier)),
+        criticalPlacementBonus: 150,
+        positionalExecutionBonus: 100,
+        rawText: `- Claw Swipe / Pounce: Damage ${clawMin}-${clawMax} slashing. Stamina Cost: 2. Accuracy: Dexterity + 10%(1000). Special: Fast raking slash; precision scales 1,000-point threshold (+100 hit confirmation, +150 critical placement); force scales base damage (${clawMin}-${clawMax}).`
       });
       return attacks;
     }
@@ -3275,11 +3729,16 @@ export class WeightInventoryEngine {
       maxDamage: heavyMax,
       damageType: 'bludgeoning',
       staminaCost: Math.max(2, Math.min(5, Math.round(2 * massFactor))),
-      accuracy: 'Strength + 5%(1000)',
-      special: 'Bludgeoning impact; delivers full kinetic force of body mass, with stagger potential.',
+      accuracy: 'Training Experience / Technique + 5%(1000)',
+      special: 'Bludgeoning impact; force-oriented attributes exclusively scale base damage, penetration, and physical knockdown threshold; training experience dictates hit accuracy.',
       isUnarmed: true,
       scalingStat: 'strength',
-      rawText: `- Unarmed Strike (Heavy Punch / Cross): Damage ${heavyMin}-${heavyMax} bludgeoning. Stamina Cost: ${Math.max(2, Math.min(5, Math.round(2 * massFactor)))}. Accuracy: Strength + 5%(1000). Special: Bludgeoning impact; delivers full kinetic force of body mass, with stagger potential.`
+      forceScalingStat: 'strength',
+      penetration: Math.max(1, Math.round(2 * strengthMultiplier)),
+      knockdownThreshold: Math.max(12, Math.round(18 * massFactor * strengthMultiplier)),
+      criticalPlacementBonus: 0,
+      positionalExecutionBonus: 0,
+      rawText: `- Unarmed Strike (Heavy Punch / Cross): Damage ${heavyMin}-${heavyMax} bludgeoning. Stamina Cost: ${Math.max(2, Math.min(5, Math.round(2 * massFactor)))}. Accuracy: Training Experience / Technique + 5%(1000). Special: Bludgeoning impact; force scales base damage (${heavyMin}-${heavyMax}), penetration (${Math.max(1, Math.round(2 * strengthMultiplier))}), and knockdown threshold (${Math.max(12, Math.round(18 * massFactor * strengthMultiplier))}); strength does not dictate accuracy.`
     });
 
     // 2. Dexterity-Driven Precise Jab / Rapid Strike
@@ -3294,10 +3753,16 @@ export class WeightInventoryEngine {
       damageType: 'bludgeoning',
       staminaCost: 1,
       accuracy: 'Dexterity + 10%(1000)',
-      special: 'Swift execution; high precision targeting vulnerable points; rapid recovery for follow-ups.',
+      special: 'Swift execution; dexterity applies strictly to 1,000-point threshold (+100 hit confirmation, +150 critical placement, +100 positional execution); zero damage amplification.',
       isUnarmed: true,
       scalingStat: 'dexterity',
-      rawText: `- Precise Jab / Rapid Strike: Damage ${jabMin}-${jabMax} bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution; high precision targeting vulnerable points; rapid recovery for follow-ups.`
+      precisionScalingStat: 'dexterity',
+      forceScalingStat: 'none',
+      penetration: 0,
+      knockdownThreshold: 0,
+      criticalPlacementBonus: 150,
+      positionalExecutionBonus: 100,
+      rawText: `- Precise Jab / Rapid Strike: Damage ${jabMin}-${jabMax} bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution; precision attributes scale 1,000-point success threshold (+100 hit confirmation, +150 critical placement, +100 positional execution) without raw damage amplification.`
     });
 
     // 3. Balanced Low Kick / Leg Sweep
@@ -3310,11 +3775,17 @@ export class WeightInventoryEngine {
       maxDamage: kickMax,
       damageType: 'bludgeoning',
       staminaCost: 3,
-      accuracy: 'Dexterity + 0%(1000)',
-      special: 'Off-balances target; knockdown or trip hazard on high margin of success.',
+      accuracy: 'Dexterity + 5%(1000)',
+      special: 'Off-balances target; dexterity bonus applied strictly to 1,000-point threshold for positional execution; leg force exclusively scales base damage and knockdown threshold.',
       isUnarmed: true,
       scalingStat: 'balanced',
-      rawText: `- Low Kick / Leg Sweep: Damage ${kickMin}-${kickMax} bludgeoning. Stamina Cost: 3. Accuracy: Dexterity + 0%(1000). Special: Off-balances target; knockdown or trip hazard on high margin of success.`
+      forceScalingStat: 'strength',
+      precisionScalingStat: 'dexterity',
+      penetration: Math.max(1, Math.round(1.5 * strengthMultiplier)),
+      knockdownThreshold: Math.max(15, Math.round(22 * massFactor * strengthMultiplier)),
+      criticalPlacementBonus: 50,
+      positionalExecutionBonus: 120,
+      rawText: `- Low Kick / Leg Sweep: Damage ${kickMin}-${kickMax} bludgeoning. Stamina Cost: 3. Accuracy: Dexterity + 5%(1000). Special: Off-balances target; dexterity scales 1,000-point positional execution (+120); leg force scales base damage (${kickMin}-${kickMax}) and physical knockdown threshold (${Math.max(15, Math.round(22 * massFactor * strengthMultiplier))}).`
     });
 
     // 4. Strength-Driven Grapple / Body Slam
@@ -3327,11 +3798,16 @@ export class WeightInventoryEngine {
       maxDamage: slamMax,
       damageType: 'bludgeoning',
       staminaCost: 3,
-      accuracy: 'Strength + 0%(1000)',
-      special: 'Close-quarters control; pins, tackles, or grounds opponent using full physical leverage.',
+      accuracy: 'Strength / Leverage + 5%(1000)',
+      special: 'Close-quarters control; strength and leverage determine the success rate of keeping the creature grappled and pinned; force-scaled knockdown threshold.',
       isUnarmed: true,
       scalingStat: 'strength',
-      rawText: `- Grapple / Body Slam: Damage ${slamMin}-${slamMax} bludgeoning. Stamina Cost: 3. Accuracy: Strength + 0%(1000). Special: Close-quarters control; pins, tackles, or grounds opponent using full physical leverage.`
+      forceScalingStat: 'strength',
+      penetration: 0,
+      knockdownThreshold: Math.max(18, Math.round(25 * massFactor * strengthMultiplier)),
+      criticalPlacementBonus: 0,
+      positionalExecutionBonus: 0,
+      rawText: `- Grapple / Body Slam: Damage ${slamMin}-${slamMax} bludgeoning. Stamina Cost: 3. Accuracy / Hold: Strength / Leverage + 5%(1000). Special: Close-quarters control; strength determines success of keeping the creature grappled and pinned; force scales knockdown threshold (${Math.max(18, Math.round(25 * massFactor * strengthMultiplier))}).`
     });
 
     return attacks;
@@ -3759,10 +4235,66 @@ export class WeightInventoryEngine {
     // Dynamic item usage & refillable detection
     const usage = this.parseItemUsage(rest, name);
 
+    // Extract explicit volume if present
+    const explicitVolume = WeightInventoryEngine.parseExplicitVolume(rest) ?? WeightInventoryEngine.parseExplicitVolume(name);
+
+    // Check if this item is a consolidated stack or multi-count bulk item (e.g. ammo, bandages, arrows, bolts, scrip)
+    const stackMatch = name.match(/^(?:([0-9]+)\s*x\s*)?stack\s+of\s+([0-9]+)\s*(?:\[([^\]]+)\]|(.*))$/i);
+    let isStack = false;
+    let stackCount: number | undefined;
+    let cleanItemName = name;
+    if (stackMatch) {
+      isStack = true;
+      stackCount = parseInt(stackMatch[2], 10);
+      cleanItemName = (stackMatch[3] || stackMatch[4] || name).trim();
+    } else {
+      const leadingQtyMatch = name.match(/^(?:Amount:\s*)?([0-9]+)\s*x\s*(?:\[([^\]]+)\]|(.*))$/i);
+      if (leadingQtyMatch) {
+        const qty = parseInt(leadingQtyMatch[1], 10);
+        const inner = (leadingQtyMatch[2] || leadingQtyMatch[3] || '').trim();
+        if (qty > 1 && WeightInventoryEngine.isStackableOrBulkItem(inner, rest, dimensions)) {
+          isStack = true;
+          stackCount = qty;
+          cleanItemName = inner;
+        }
+      }
+    }
+
+    let finalDims = dimensions;
+    let finalVol: number | undefined = explicitVolume;
+
+    if (isStack && stackCount && stackCount > 1) {
+      if (stackMatch || explicitVolume !== undefined) {
+        // Stack definition directly gives total stack dimensions and volume
+        finalDims = dimensions;
+        finalVol = explicitVolume !== undefined
+          ? explicitVolume
+          : (dimensions.applies && dimensions.height && dimensions.width && dimensions.depth ? Math.round(dimensions.height * dimensions.width * dimensions.depth * 100) / 100 : undefined);
+      } else {
+        // Multi-count flat or stackable item with single item dimensions:
+        // Calculate aggregate dimensions by multiplying ONLY thickness axis while keeping length & width constant!
+        const bundle = WeightInventoryEngine.calculateConsolidatedBundle(
+          cleanItemName,
+          stackCount,
+          dimensions,
+          undefined,
+          explicitVolume,
+          weight
+        );
+        finalDims = bundle.dimensions;
+        finalVol = bundle.volume;
+      }
+    } else if (dimensions.applies && dimensions.height && dimensions.width && dimensions.depth) {
+      finalVol = explicitVolume !== undefined ? explicitVolume : Math.round(dimensions.height * dimensions.width * dimensions.depth * 100) / 100;
+    }
+
     return {
       name,
       weight,
-      dimensions,
+      dimensions: finalDims,
+      volume: finalVol,
+      isStack,
+      stackCount,
       category: defaultContainer ? 'carried' : 'equipped',
       containerName,
       location,
@@ -4781,10 +5313,11 @@ export class WeightInventoryEngine {
 
             cont.items.push(item);
             cont.currentItemsWeight = Math.round((cont.currentItemsWeight + item.weight) * 100) / 100;
-            cont.totalWeight = Math.round((cont.totalWeight + item.weight) * 100) / 100;
-            const itemVol = item.dimensions?.applies && (item.dimensions.height || 0) * (item.dimensions.width || 0) * (item.dimensions.depth || 0) > 0
-              ? (item.dimensions.height || 0) * (item.dimensions.width || 0) * (item.dimensions.depth || 0)
-              : 0;
+            const itemVol = item.volume !== undefined
+              ? item.volume
+              : (item.dimensions?.applies && (item.dimensions.height || 0) * (item.dimensions.width || 0) * (item.dimensions.depth || 0) > 0
+                ? (item.dimensions.height || 0) * (item.dimensions.width || 0) * (item.dimensions.depth || 0)
+                : 0);
             cont.currentVolume = Math.round(((cont.currentVolume || 0) + itemVol) * 100) / 100;
             WeightInventoryEngine.updateContainerStretchDimensions(cont);
           } else if (lower.includes('equipped') || lower.includes('wielding') || lower.includes('wearing') || lower.includes('armor:')) {
@@ -5457,15 +5990,25 @@ export class WeightInventoryEngine {
           // Mirror into targetCont.items for container UI if not already mirrored
           const alreadyMirrored = targetCont.items.some(it => it.name.toLowerCase().includes(c.name.toLowerCase()));
           if (!alreadyMirrored) {
+            const mirrorName = c.amount > 1
+              ? `1x Stack of ${c.amount} [${c.name}]`
+              : `1x [${c.name}]${c.worth ? ` (Worth: ${c.worth})` : ''}`;
+            const dimStr = c.dimensions?.raw || '4x4x0.3 inches';
+            const volStr = `${curVol} cu in`;
             targetCont.items.push({
-              name: `Amount: ${c.amount}x Name: [${c.name}]${c.worth ? ` (Worth: ${c.worth})` : ''}`,
+              name: mirrorName,
               weight: curWt,
               dimensions: c.dimensions || this.parseDimensions(c.singleDimensionsRaw || '1.2x1.2x0.08 inches'),
+              volume: curVol,
+              isStack: c.amount > 1,
+              stackCount: c.amount,
               category: 'carried',
               containerName: targetCont.name,
               isOverflow: targetCont.hasOverflow,
               overflowReason: targetCont.overflowReason,
-              rawText: `* Name: [${c.name}] | Amount: ${c.amount} | Worth: ${c.worth || c.name} | Dimensions: ${c.dimensions?.raw || '1.2x1.2x0.08 in'} | Weight: ${curWt} lbs`
+              rawText: c.amount > 1
+                ? `* 1x Stack of ${c.amount} [${c.name}] (${dimStr}, ${curWt} lbs, ${volStr}). Container: [${targetCont.name}]`
+                : `* 1x [${c.name}] (${dimStr}, ${curWt} lbs). Container: [${targetCont.name}]`
             });
           }
         }
@@ -6120,17 +6663,40 @@ export class WeightInventoryEngine {
             invModified = true;
             changes.push(`Removed spent/given currency (${cEntries[0].amount} ${cEntries[0].name}) from container ${targetContName || 'gear'}`);
             continue;
-          } else if (matchingCarried.amount !== cEntries[0].amount) {
-            // Currency amount changed; update line with new accurate amount
-            const oldAmtStr = cEntries[0].amount.toString();
-            const newAmtStr = matchingCarried.amount.toString();
-            const updatedInvLine = invLine
-              .replace(new RegExp(`\\$${oldAmtStr}\\b`), `$${newAmtStr}`)
-              .replace(new RegExp(`\\b${oldAmtStr}\\b`), newAmtStr);
-            newInvLines.push(updatedInvLine);
-            invModified = true;
-            changes.push(`Updated currency in container ${targetContName} from ${cEntries[0].amount} to ${matchingCarried.amount}`);
-            continue;
+          } else {
+            const isLegacyOrUnbundled = !invLine.toLowerCase().includes('stack of') && (invLine.toLowerCase().includes('amount:') || /\b[0-9]+x\b/i.test(invLine));
+            if (isLegacyOrUnbundled && matchingCarried.amount > 1 && !matchingCarried.isDigital) {
+              const cDimStr = matchingCarried.dimensions?.raw || '4x4x0.3 in';
+              const cVolStr = matchingCarried.totalVolume !== undefined ? `${matchingCarried.totalVolume} cu in` : '4.8 cu in';
+              const cWt = matchingCarried.weight !== undefined ? matchingCarried.weight : 0.15;
+              const updatedInvLine = `  * 1x Stack of ${matchingCarried.amount} [${matchingCarried.name}] (${cDimStr}, ${cWt} lbs, ${cVolStr}). Container: [${targetContName || currentContainerName || 'Coin Pouch'}]`;
+              newInvLines.push(updatedInvLine);
+              invModified = true;
+              changes.push(`Reformatted ${matchingCarried.amount}x ${matchingCarried.name} as consolidated stack`);
+              continue;
+            } else if (matchingCarried.amount !== cEntries[0].amount) {
+              // Currency amount changed; update line with new accurate amount
+              if (matchingCarried.amount > 1 && !matchingCarried.isDigital) {
+                const cDimStr = matchingCarried.dimensions?.raw || '4x4x0.3 in';
+                const cVolStr = matchingCarried.totalVolume !== undefined ? `${matchingCarried.totalVolume} cu in` : '4.8 cu in';
+                const cWt = matchingCarried.weight !== undefined ? matchingCarried.weight : 0.15;
+                const updatedInvLine = `  * 1x Stack of ${matchingCarried.amount} [${matchingCarried.name}] (${cDimStr}, ${cWt} lbs, ${cVolStr}). Container: [${targetContName || currentContainerName || 'Coin Pouch'}]`;
+                newInvLines.push(updatedInvLine);
+                invModified = true;
+                changes.push(`Updated currency in container ${targetContName} from ${cEntries[0].amount} to ${matchingCarried.amount}`);
+                continue;
+              } else {
+                const oldAmtStr = cEntries[0].amount.toString();
+                const newAmtStr = matchingCarried.amount.toString();
+                const updatedInvLine = invLine
+                  .replace(new RegExp(`\\$${oldAmtStr}\\b`), `$${newAmtStr}`)
+                  .replace(new RegExp(`\\b${oldAmtStr}\\b`), newAmtStr);
+                newInvLines.push(updatedInvLine);
+                invModified = true;
+                changes.push(`Updated currency in container ${targetContName} from ${cEntries[0].amount} to ${matchingCarried.amount}`);
+                continue;
+              }
+            }
           }
         }
 
@@ -6161,8 +6727,15 @@ export class WeightInventoryEngine {
             const targetCont = cc.container ||
               stats.containers.find(ct => /pouch|wallet|purse|pocket|money\s*belt/i.test(ct.name))?.name ||
               (stats.containers.length > 0 ? stats.containers[0].name : 'Coin Pouch');
-            const wPart = cc.weight !== undefined ? `: ${cc.weight} lbs` : '';
-            newInvLines.push(`  * ${cc.amount} ${ccClean}${wPart}. Container: [${targetCont}]`);
+            if (cc.amount > 1 && !cc.isDigital) {
+              const cDimStr = cc.dimensions?.raw || '4x4x0.3 in';
+              const cVolStr = cc.totalVolume !== undefined ? `${cc.totalVolume} cu in` : '4.8 cu in';
+              const cWt = cc.weight !== undefined ? cc.weight : 0.15;
+              newInvLines.push(`  * 1x Stack of ${cc.amount} [${ccClean}] (${cDimStr}, ${cWt} lbs, ${cVolStr}). Container: [${targetCont}]`);
+            } else {
+              const wPart = cc.weight !== undefined ? `: ${cc.weight} lbs` : '';
+              newInvLines.push(`  * ${cc.amount} ${ccClean}${wPart}. Container: [${targetCont}]`);
+            }
             invModified = true;
             changes.push(`Added carried currency ${cc.amount} ${ccClean} to container [${targetCont}]`);
           }
@@ -6257,8 +6830,13 @@ export class WeightInventoryEngine {
           const dimPart = c.isDigital ? ` | Dimensions: Digital` : ` | Dimensions: ${dimStr}`;
           const wPart = c.weight !== undefined ? ` | Weight: ${c.weight} lbs` : '';
           const contSuffix = c.container ? ` [Container: ${c.container}]` : '';
-          // User mandate: the year of the coin should be in the name format part of the currency while the amount is separate format for that coin
-          currencyLines.push(`  * Name: [${c.name}] | Amount: ${c.amount}${worthPart}${dimPart}${wPart}${contSuffix}`);
+
+          if (c.amount > 1 && !c.isDigital) {
+            const volStr = c.totalVolume !== undefined ? `, ${c.totalVolume} cu in` : '';
+            currencyLines.push(`  * 1x Stack of ${c.amount} [${c.name}] (${dimStr}, ${c.weight !== undefined ? `${c.weight} lbs` : '0.15 lbs'}${volStr})${worthPart}${contSuffix}`);
+          } else {
+            currencyLines.push(`  * Name: [${c.name}] | Amount: ${c.amount}${worthPart}${dimPart}${wPart}${contSuffix}`);
+          }
         }
       }
 

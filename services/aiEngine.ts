@@ -335,16 +335,29 @@ All character/NPC/Entity files MUST follow this structured format for consistenc
 
 [ATTACKS & COMBAT ACTIONS]
 - List every physical attack or standard action this entity can perform, INCLUDING their realistic unarmed attack(s).
+- DYNAMIC ATTRIBUTE SCALING MANDATE (CRITICAL - STRICT SEPARATION OF PRECISION VS FORCE):
+  Across all combat actions, maneuvers, physical attacks, and checks:
+  * PRECISION-ORIENTED ATTRIBUTES (Dexterity, Agility, Reflexes, Aim, Finesse, Coordination, Balance, Swiftness):
+    - NEVER directly amplify raw damage or impact potency. Under NO circumstances does Dexterity, Agility, or precision increase raw damage numbers.
+    - Apply their bonuses STRICTLY to the 1,000-point success threshold. These bonuses dictate hit confirmation (lowering the threshold required to hit on the 1000 scale), critical placement (expanding the critical margin against the 1,000-point threshold to target vital/weak points), and positional execution (maneuvers, angles of attack, disarms, trips, parries, and bypassing defense).
+  * FORCE-ORIENTED ATTRIBUTES (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn, Muscle, Torque):
+    - EXCLUSIVELY scale base damage (amplifying raw kinetic damage and impact potency), penetration values (armor penetration, piercing depth, barrier breaching), and physical knockdown/stagger/slam thresholds.
+    - NEVER grant precision accuracy bonuses or critical placement bonuses.
+    - STRENGTH & SUCCESS RATE MANDATE (CRITICAL BUG FIX):
+      * For punches, kicks, strikes, weapon swings, slashes, thrusts, and ranged attacks: Strength NEVER determines accuracy or whether the attack hits (success rate)! High strength does NOT make a punch or blade connect. Instead, training experience, combat practice, technique, weapon skill, and precision/dexterity determine accuracy and hit confirmation. Strength exclusively scales the damage, penetration, and knockdown thresholds upon hitting.
+      * CONTEXTUAL EXCEPTION (WHEN STRENGTH DOES APPLY TO SUCCESS RATE): Strength ONLY determines the success rate of a check when the action is contextually a direct contest of physical power, leverage, grip, or restraint—such as: Grappling (keeping a creature getting grappled staying there successfully, pinning, wrestling, or holding down an opponent), breaking out of a grapple/restraint, shoving, bull-rushing, tackling to the ground, lifting heavy objects/gates, forcing open stuck/barred doors, bending bars, snapping bonds, or resisting physical knockdown/overrun.
 - UNARMED & NATURAL COMBAT MANDATE (CRITICAL): Every entity (player and NPC) MUST include their realistic unarmed attack(s) matching their anatomy and biological capabilities, even if they carry or equip weapons:
-  * Strength-Driven Heavy Strikes (e.g. "Unarmed Strike (Heavy Punch / Cross)", "Grapple / Body Slam", "Crushing Bite"): Damage scales directly with physical body mass/weight and Strength multiplier. High kinetic force, bludgeoning damage, chance to stagger or break guard.
-  * Dexterity-Driven Precise Strikes (e.g. "Precise Jab / Rapid Strike", "Nerve / Pressure Point Strike", "Claw Swipe"): Pinpoint accuracy bonus (+10%), fast execution, low stamina cost (1-2 stamina), high critical precision targeting exposed or vital anatomy.
-  * Leg / Sweeping Strikes (e.g. "Low Kick / Leg Sweep"): Balanced strength/dexterity, knockdown / trip hazard.
-  * Natural Predator & Creature Weapons: Accurately match biology (e.g. "Bite (Feral Jaws): Damage 4-8 piercing... bleed risk", "Claw Swipe: Damage 3-6 slashing", "Pseudopod Slam: bludgeoning / acid", "Spectral Chilling Touch: cold/necrotic bypassing physical armor").
+  * Heavy Strikes & Punches (e.g. "Unarmed Strike (Heavy Punch / Cross)"): Damage scales directly with physical body mass/weight and Strength/hydraulic power. Force exclusively scales base damage, penetration values, and physical knockdown thresholds. Hit accuracy is determined by training experience, technique, or dexterity, NEVER by strength.
+  * Grappling & Restraint Holds (e.g. "Grapple / Body Slam", "Wrestling Pin"): Direct contests of physical power and leverage. Strength DOES determine the success rate of initiating and maintaining the grapple (e.g. keeping a creature getting grappled staying there successfully).
+  * Dexterity-Driven Precise Strikes (e.g. "Precise Jab / Rapid Strike", "Nerve / Pressure Point Strike", "Claw Swipe"): Precision attributes apply strictly to the 1,000-point success threshold (+10% / +100 to 1000) to dictate hit confirmation, critical placement (+150 against 1000), and rapid positional execution, with zero direct amplification to raw damage.
+  * Leg / Sweeping Strikes (e.g. "Low Kick / Leg Sweep"): Precision bonus or technique applied strictly to 1,000-point threshold for positional execution; leg force exclusively scales base damage and knockdown threshold.
+  * Natural Predator & Creature Weapons: Accurately match biology (e.g. "Bite (Feral Jaws): Damage 6-12 piercing... bleed risk", "Claw Swipe: Damage 3-6 slashing", "Pseudopod Slam: bludgeoning / acid", "Spectral Chilling Touch: cold/necrotic bypassing physical armor"). Jaw/body strength exclusively scales damage and penetration; accuracy is driven by predatory reflexes/instinct.
 - NO WEAPON REQUIRED RULE: If a character is disarmed, drops their weapon, or chooses to fight bare-handed, combat actions MUST resolve smoothly using their realistic unarmed attack profile without requiring a weapon or failing the action.
 - Format: "AttackName: Damage X-Y. Stamina Cost: Z. Accuracy: stat + modifiers. Special: (Effects)".
-- Example: "Unarmed Strike (Heavy Punch / Cross): Damage 4-7 bludgeoning. Stamina Cost: 2. Accuracy: Strength + 5%(1000). Special: Bludgeoning impact; high kinetic force with stagger potential."
-- Example: "Precise Jab / Rapid Strike: Damage 2-4 bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution; high precision targeting vulnerable points."
-- Example: "Bite (Feral Jaws): Damage 6-12 piercing. Stamina Cost: 3. Accuracy: Dexterity + 5%(1000). Special: Crushing puncture; latching grip with bleed risk."
+- Example: "Unarmed Strike (Heavy Punch / Cross): Damage 4-7 bludgeoning. Stamina Cost: 2. Accuracy: Training Experience / Technique + 5%(1000). Special: Bludgeoning impact; force scales base damage (4-7), penetration (2), and knockdown threshold (15); strength does not dictate accuracy."
+- Example: "Precise Jab / Rapid Strike: Damage 2-4 bludgeoning. Stamina Cost: 1. Accuracy: Dexterity + 10%(1000). Special: Swift execution; precision applies strictly to 1,000-point threshold for hit confirmation, critical placement (+150), and positional execution without raw damage amplification."
+- Example: "Grapple / Body Slam: Damage 2-4 bludgeoning. Stamina Cost: 3. Accuracy / Hold: Strength + 5%(1000). Special: Direct contest of physical restraint and leverage; strength determines the success rate of keeping the creature grappled and pinned; force scales knockdown threshold (18)."
+- Example: "Bite (Feral Jaws): Damage 6-12 piercing. Stamina Cost: 3. Accuracy: Predatory Reflexes + 5%(1000). Special: Crushing puncture; force scales base damage (6-12), penetration (3), and knockdown threshold (14); jaw strength does not boost accuracy."
 
 [ABILITIES & MAGIC]
 - List EVERY ability, spell, or special power this specific entity has.
@@ -467,6 +480,16 @@ DYNAMIC STATS RULE (CRITICAL):
 - Armor must be represented with a base threshold and specific damage type immunities below that threshold.
   * Example: armor: leather base armor 15 (damage less than 15 that is Bludgeoning, Force, Piercing, and Slashing won't effect because of the protection unless other effects/context apply)
 - ADVANTAGE/DISADVANTAGE: 1 disadvantage modifier effect exactly cancels out 1 advantage modifier effect.
+
+DYNAMIC PRACTICE, TRAINING, CONDITIONING & CHARACTER EVOLUTION (CRITICAL MANDATE - NO HARDCODED LIMITS OR KEYWORDS):
+- When characters spend time training, practicing, studying, exercising, meditating, sparring, drilling, or repetitively refining any action, craft, magic, physical conditioning, or mental discipline in context:
+  * The system MUST realistically and dynamically adapt their character sheet without requiring any hardcoded keywords, fixed level-up thresholds, or rigid checklists.
+  * DURATION & LENGTH SCALING: Character progression scales realistically to the duration, frequency, and intensity of the effort in context:
+    - Brief / fleeting attempts (e.g. a few seconds to a few minutes) establish initial familiarity or minor muscle memory at best, not major stat leaps.
+    - Moderate focused practice (e.g. hours to days) produces noticeable refinements: honing a modifier (e.g. refining a check bonus or accuracy from +5% to +6%(1000)), building stamina efficiency, improving technique consistency, or eliminating unfamiliarity penalties.
+    - Long-term or intensive conditioning (e.g. weeks, months, or high-intensity dedicated regimens) produces permanent physiological, technical, or mental adaptations: increasing or adjusting core attribute modifiers, unlocking new distinct maneuvers/techniques/attacks under [ATTACKS & COMBAT ACTIONS], expanding known abilities/spells under [ABILITIES & MAGIC], or permanently conditioning physical attributes (such as lift capacity, sprint endurance, or pain tolerance).
+  * FLEXIBLE & ACCURATE: The changes apply strictly according to the character's biology, current capabilities, the nature of what was practiced, and world physics/magic. An elder mage studying ancient runes refines mental focus and arcana; a frontline warrior sparring daily develops parry timing and muscle recruitment; an agile acrobat practicing balance improves positional execution.
+  * PERSISTENCE: Any modifier, stat, attack, or ability that is increased, added, or changed MUST be updated directly in the character's file (e.g. under [STATS & MODIFIERS], [ATTACKS & COMBAT ACTIONS], or [ABILITIES & MAGIC]) and reflected in the narrative and 'updates' array (e.g. {"type": "stat", "text": "...", "value": ...} or {"type": "misc", "text": "...", "value": 1}).
 
 FILE DETAIL RULE (CRITICAL):
 - ALL files (character files, locations, items, WorldRules, etc.) MUST be highly detailed, extensive, specific, and accurate. 
@@ -715,7 +738,13 @@ Your ONLY goal is to analyze the player's action against the "World Context" and
 
 INSTRUCTIONS:
 1. AUDIT FOR CHECKS: Identify if the action requires a probability check (Combat, Stealth, Magic Focus, Physical feats, etc.).
-   - UNARMED COMBAT AUDIT RULE: When a player or NPC strikes, kicks, grapples, tackles, bites, or attacks without weapons, audit the check using their realistic unarmed attack capabilities: Heavy, forceful strikes audit against Strength (kinetic force and bludgeoning impact); swift, pinpoint strikes audit against Dexterity (vital precision and speed); and creature natural weapons audit their biological traits. Never require a weapon to audit or execute physical attacks.
+   - DYNAMIC ATTRIBUTE SCALING MANDATE (CRITICAL - STRICT SEPARATION OF PRECISION VS FORCE):
+     * Precision-oriented attributes (Dexterity, Agility, Reflexes, Aim, Finesse, Coordination) NEVER directly amplify raw damage or impact potency. Apply their bonuses strictly to the 1,000-point success threshold to dictate hit confirmation, critical placement, and positional execution.
+     * Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds.
+     * STRENGTH & SUCCESS RATE AUDIT RULE (CRITICAL BUG FIX):
+       - For punches, kicks, strikes, melee attacks, slashes, and weapon swings: Strength NEVER dictates accuracy or hit confirmation (success rate)! Do NOT assign Strength as the accuracy stat for a punch or strike. Instead, audit hit confirmation against Training Experience, Combat Technique, Practice, or Dexterity/Precision attributes. Strength exclusively scales damage, penetration, and knockdown thresholds upon hitting.
+       - CONTEXTUAL EXCEPTION: When an action is contextually a direct contest of physical power, leverage, or restraint (such as a Grapple to keep a creature held/pinned, breaking out of a hold, shoving, bull-rushing, or lifting/forcing heavy barriers), Strength DOES legitimately determine the check's success rate.
+   - UNARMED COMBAT AUDIT RULE: When a player or NPC strikes, kicks, grapples, tackles, bites, or attacks without weapons, audit the check using their realistic unarmed attack capabilities: For punches and strikes, audit hit confirmation against Training Experience, Technique, or Dexterity (with Strength scaling damage and knockdown upon hitting); for grapples and pins, audit against Strength/leverage to see if the hold is successfully established and maintained. Never require a weapon to audit or execute physical attacks.
    - RANDOM FIRST INTEGRITY: Do NOT generate, invent, choose, or output a roll number in "checks"! All rolls are rolled first via unbiased backend code randomness before outcome determination to prevent AI bias. You only detect the check name, reason, difficulty, stat, and modifiers.
 2. AUDIT FOR ENTITIES: List every individual NPC, group of NPCs, Weapon, Item, or Location mentioned that does NOT have a file in context.
 3. AUDIT FOR MAP: Determine if the player moved, environment changed, or new entities/landmarks/items appeared. Maps must have NOTHING missing within all players' observable and known areas, landmarks, items, npcs, structures, terrain features, etc. Always keep all observable and known elements updated correctly. Support advanced flexible shapes (oblong areas like forests via ellipse, irregular multi-point polygons, detailed architectural buildings such as market stalls and shops, paths/roads, circles, rects).
@@ -800,6 +829,16 @@ INSTRUCTIONS:
         - "isMassiveDamage": boolean (true if damage dealt >= 1.5x current HP)
         - "isLethalUnconsciousStrike": boolean (true if target was at 0 HP unconscious and took >= 15% max HP damage)
     - Every character taking damage or healing MUST have their file added to "filesToUpdate"!
+12. AUDIT FOR TRAINING, PRACTICE, CONDITIONING & CHARACTER EVOLUTION (DYNAMIC AI REASONING):
+    - Dynamically detect if ANY character (player or NPC) engages in training, practicing, studying, exercising, meditating, conditioning, sparring, or repetitive physical/mental effort over a duration or length of time.
+    - Dynamically analyze the specific activity, its duration/length, and intensity:
+      * Accurately determine:
+        - isTrainingOrPractice: true if training/practicing/studying occurs, false otherwise.
+        - activity: description of what was practiced or studied.
+        - duration: elapsed or dedicated time (e.g. 15 minutes, 2 hours, 3 days, 1 month).
+        - intensity: effort level and context (e.g. light drill, strenuous workout, deep focus, exhaustion).
+        - adaptations: list of specific modifier changes, new features, techniques, attacks, abilities, or stat adjustments that realistically result from this length of practice without using any hardcoded keywords or templates.
+    - Ensure the character's file is added to "filesToUpdate"!
    
 OUTPUT FORMAT (Strict JSON only):
 {
@@ -892,6 +931,13 @@ OUTPUT FORMAT (Strict JSON only):
     "character": "CharacterName",
     "expectedChange": 0,
     "reason": "Menial task (e.g. talking / standing / observing) uses no noticeable energy; OR genuine exertion/spell/rest"
+  },
+  "progressionAudit": {
+    "isTrainingOrPractice": true,
+    "activity": "Sword sparring / Lockpicking drills / Meditation / etc.",
+    "duration": "2 hours / 3 days / etc.",
+    "intensity": "Moderate drills / Strenuous conditioning / Deep focus",
+    "adaptations": ["Refined accuracy modifier from +5% to +6%(1000)", "Unlocked new technique: Deflective Parry"]
   },
   "filesToCreate": ["List of filenames to immediately generate"],
   "filesToUpdate": ["List of filenames that must be modified (Player, NPCs, etc)"],
@@ -991,7 +1037,7 @@ export class AIEngine {
           ? `CRITICAL CHARACTER CREATION RULE: You MUST also create a highly detailed, extensive character file for player "${username}" during this initialization. The character's in-world Name MUST be a distinct, authentic, fictional name (e.g. "Kaelen Thorne", "Lyra Whisperwind", "Valerius") fitting the world setting. The character's name MUST NOT be the account username "${username}" and MUST NOT be a generic label like "Adventurer" or "Player". The file MUST be named EXACTLY "[CharacterName]-${username}.txt" (e.g. "Kaelen-${username}.txt"). Inside the file under [NAME & DESCRIPTION], specify '- Name: [CharacterName]' and '- Player: ${username}'. On CurrentMap.json, place this character in "players" with username: "${username}" and characterName: "[CharacterName]". PLAYER CHARACTERS ARE NEVER NPCS: DO NOT put this player character in "npcs" on CurrentMap.json!`
           : "CRITICAL: DO NOT create any player character files during this initialization phase. Players will provide their character descriptions separately later. You MUST NOT return any file named with \"CharacterName-USERNAME.txt\" format during this world generation phase. Wait for the explicit character prompt next.";
 
-        const prompt = `Initialize world: ${startingPrompt}\n\nRemember: PROBABILITY ENGINE RULE (CRITICAL). Create highly detailed, extensive, and long files for the starting world (CurrentMap.json, WorldRules.txt, Guide.txt, WorldTime.txt, and initial locations/NPCs). ${charRequirement} Ensure all stats use the new dynamic probability engine modifier format (e.g., "agility: base probability engine + 5%(1000) + effects") and armor uses thresholds. WorldRules.txt MUST define the physics, weights, dimensions, containers (max space dimensions like 18x12 inches, overflow risking dropping items; when containers stretch, only multiply/expand their physical size and dimensions instead of their weight—never multiply the container's own empty weight with it), the dynamic overflow rule (the more items added to overflow and the heavier and bigger each item, the bigger chance of dropping by accident based on context and scaled random chance; heavier/bigger items have a higher chance of dropping than smaller/lighter ones), starting carrying item limits (characters can start with at most 2x their hand slots in carried items, though during adventure they can carry more than limit), auto-equip rule (items bigger than container space like clothes/armor automatically equip under [Equipped Gear & Armor] if contextually sensible to prevent container overflow), max lift strength (100% of body weight for baseline human with 1.0x strength), encumbrance rules (<= 20% good, 21%+ slower speed effect), and temporary effect reversions (e.g. lightweight spell on boulder reverting upon expiration). If creating starting character(s), their starting carried items (equipped + carried in containers) MUST BE <= 2x their hand slots (e.g., max 4 items for 2 hands); place any extra items under [OWNED / STORED ITEMS (NOT ON PERSON)]. DYNAMIC STARTING CURRENCY & WEALTH (CRITICAL): Never be lazy with character wealth, economy, or inventory. If creating starting character(s) or NPCs, dynamically reason about their social status, background, profession, and world setting to determine an authentic, setting-appropriate starting currency and net worth. Under [CURRENCY & FINANCIAL BALANCE], specify their Currency Type and Carried Balance (On Person) itemized with denominations, placed inside an equipped container (such as a coin pouch, wallet, purse, or pocket) under [CONTAINERS & CARRIED GEAR]. (Wallets, chit wallets, cardholders, and coin pouches are EQUIPPED CONTAINERS, NEVER currency items! Do NOT list wallets as money, and never generate placeholder tags like "(Worth: Credits)" or compliance/accounting header lines in inventory lists). If they own property, savings, or bank deposits, list them under Stored Balance. CurrentMap.json MUST have nothing missing within all players' observable and known areas, landmarks, items, npcs, structures, terrain, with flexible shapes (oblong areas like forests using ellipse shape with cx, cy, rx, ry, polygons for irregular terrain, and detailed buildings like market stalls/shops). If the initialization involves any uncertain event, return "checks".\nCONTEXT-APPROPRIATE INHABITANTS & NPCS: If the starting context naturally makes sense to have other characters, creatures, companions, mounts, or inhabitants (e.g. in a town, tavern, outpost, traveling caravan, bustling street, or populated wilderness), you are strongly encouraged to add fitting NPCs, creatures, or mounts with their own complete character files, map coordinates on CurrentMap.json, and narrative references [Name]. NPC FILE & MAP CONVENTION: All NPC files MUST be named with "-npc.txt" (e.g. "Maeve-npc.txt", "TownGuard-npc.txt"). On CurrentMap.json, their names MUST have "-npc" appended (e.g. "Maeve-npc") and they MUST NEVER be omitted or forgotten from the map.\nHOLDING INTEGRITY & RANGED WEAPONS HANDEDNESS (CRITICAL): Under [CURRENTLY HOLDING], list only the actual item names (e.g. "Oak Shortbow", "Hunting Rifle", "Heavy Crossbow", "Iron Broadsword", "Wooden Shield", "Torch"), with their weight and dimensions. Never use limbs or grip tags as item names (e.g. do not write "Both Hands (Two-Handed Grip)" as the item name). Limbs belong in brackets like [Main Hand] or [Both Hands (Two-Handed)]. Don't add an item as things like free hand because it should just be empty instead etc for example (never create an item or inventory/held entry for things like "Free Hand" or "Empty Hand"; an unoccupied hand or slot is simply empty). RANGED WEAPONS HANDEDNESS RULE (DYNAMIC CONTEXTUAL REASONING): Ranged weapons (bows, crossbows, rifles, muskets, shotguns, carbines, blasters, slings, etc.) are NOT always two-handed! Yes, they CAN be used with two hands, but if a ranged weapon is not currently being actively fired, aimed, or braced, it is usually held in ONE HAND (1 hand slot under [CURRENTLY HOLDING], e.g. "[Main Hand] Oak Shortbow: Weight: 2 lbs. Dimensions: 48x4x1.5 inches" or "[Main Hand] Hunting Rifle: Weight: 7 lbs. Dimensions: 40x6x2 inches") because the character is just holding or carrying it by the grip, stock, or riser. This leaves their other hand completely free to draw an arrow or magazine, hold a torch, carry a shield or secondary weapon, cast spells, or interact with objects. It ONLY requires or occupies [Both Hands (Two-Handed)] dynamically when actively nocking/drawing, aiming down sights, shouldering to fire, bracing against recoil, or cocking/reloading, UNLESS other genuine situational context is detected by the AI (evaluated through realistic physical context and narrative intent, NOT simplistic keyword matching—such as holding in a braced high-ready tactical stance, sweeping corners, or tense standoff) that dictates both hands are currently gripping the weapon. CONTAINERS & GEAR INTEGRITY: Wallets, chit wallets, cardholders, coin pouches, money belts, quivers, and backpacks are EQUIPPED CONTAINERS, NEVER unequipped loose items or currency pieces! Consolidate all carried coins/funds inside their primary equipped container (never split across phantom unequipped pouches). Never output compliance/accounting header lines or meta entries like "Initialized Starting Gear" inside inventory lists or quivers. Ensure all secret locations use clean balanced hide[...] tags (e.g. "[Location: hide[Buried inside hollow oak tree]]").\nIf the starting context calls for solitude or isolation (e.g. waking alone in a cave, stranded on a deserted island, a solitary dungeon cell, or an abandoned derelict ship), it is completely valid and appropriate to start with no other characters.\nMOUNTS & VEHICLES: If mounts, riding beasts, carriages, or vehicles exist in the scene, ensure their files reflect their physical stats, speed, body weight, and any riding/passenger relationships with rider weight included in carried weight!\nAUTO ACTION RECOMMENDATIONS: Provide 2 to 4 rich, diverse, context-aware suggestions for the player's next move.\nCRITICAL: Any magic, abilities, or spells MUST be highly specific with strict limits, energy costs, ranges, and target caps. Vague "magic" is completely unacceptable. Initialize WorldTime.txt containing both [CURRENT ACTIVE TIME] and [ANCHOR / ORIGIN TIMELINE] with identical starting timestamps and Anchor Flow Mode set to Frozen.`;
+        const prompt = `Initialize world: ${startingPrompt}\n\nRemember: PROBABILITY ENGINE RULE (CRITICAL). Create highly detailed, extensive, and long files for the starting world (CurrentMap.json, WorldRules.txt, Guide.txt, WorldTime.txt, and initial locations/NPCs). ${charRequirement} Ensure all stats use the new dynamic probability engine modifier format (e.g., "agility: base probability engine + 5%(1000) + effects") and armor uses thresholds. WorldRules.txt MUST define the physics, weights, dimensions, containers (max space dimensions like 18x12 inches, overflow risking dropping items; when containers stretch, only multiply/expand their physical size and dimensions instead of their weight—never multiply the container's own empty weight with it), the dynamic overflow rule (the more items added to overflow and the heavier and bigger each item, the bigger chance of dropping by accident based on context and scaled random chance; heavier/bigger items have a higher chance of dropping than smaller/lighter ones), starting carrying item limits (characters can start with at most 2x their hand slots in carried items, though during adventure they can carry more than limit), auto-equip rule (items bigger than container space like clothes/armor automatically equip under [Equipped Gear & Armor] if contextually sensible to prevent container overflow), max lift strength (100% of body weight for baseline human with 1.0x strength), encumbrance rules (<= 20% good, 21%+ slower speed effect), temporary effect reversions (e.g. lightweight spell on boulder reverting upon expiration), and dynamic training/practice progression (time spent practicing, training, studying, conditioning, or meditating dynamically and realistically adapts, increases, or adds character modifiers, attacks, and abilities scaled proportionately to duration and effort without hardcoded keywords). If creating starting character(s), their starting carried items (equipped + carried in containers) MUST BE <= 2x their hand slots (e.g., max 4 items for 2 hands); place any extra items under [OWNED / STORED ITEMS (NOT ON PERSON)]. DYNAMIC STARTING CURRENCY & WEALTH (CRITICAL): Never be lazy with character wealth, economy, or inventory. If creating starting character(s) or NPCs, dynamically reason about their social status, background, profession, and world setting to determine an authentic, setting-appropriate starting currency and net worth. Under [CURRENCY & FINANCIAL BALANCE], specify their Currency Type and Carried Balance (On Person) itemized with denominations, placed inside an equipped container (such as a coin pouch, wallet, purse, or pocket) under [CONTAINERS & CARRIED GEAR]. (Wallets, chit wallets, cardholders, and coin pouches are EQUIPPED CONTAINERS, NEVER currency items! Do NOT list wallets as money, and never generate placeholder tags like "(Worth: Credits)" or compliance/accounting header lines in inventory lists). If they own property, savings, or bank deposits, list them under Stored Balance. CurrentMap.json MUST have nothing missing within all players' observable and known areas, landmarks, items, npcs, structures, terrain, with flexible shapes (oblong areas like forests using ellipse shape with cx, cy, rx, ry, polygons for irregular terrain, and detailed buildings like market stalls/shops). If the initialization involves any uncertain event, return "checks".\nCONTEXT-APPROPRIATE INHABITANTS & NPCS: If the starting context naturally makes sense to have other characters, creatures, companions, mounts, or inhabitants (e.g. in a town, tavern, outpost, traveling caravan, bustling street, or populated wilderness), you are strongly encouraged to add fitting NPCs, creatures, or mounts with their own complete character files, map coordinates on CurrentMap.json, and narrative references [Name]. NPC FILE & MAP CONVENTION: All NPC files MUST be named with "-npc.txt" (e.g. "Maeve-npc.txt", "TownGuard-npc.txt"). On CurrentMap.json, their names MUST have "-npc" appended (e.g. "Maeve-npc") and they MUST NEVER be omitted or forgotten from the map.\nHOLDING INTEGRITY & RANGED WEAPONS HANDEDNESS (CRITICAL): Under [CURRENTLY HOLDING], list only the actual item names (e.g. "Oak Shortbow", "Hunting Rifle", "Heavy Crossbow", "Iron Broadsword", "Wooden Shield", "Torch"), with their weight and dimensions. Never use limbs or grip tags as item names (e.g. do not write "Both Hands (Two-Handed Grip)" as the item name). Limbs belong in brackets like [Main Hand] or [Both Hands (Two-Handed)]. Don't add an item as things like free hand because it should just be empty instead etc for example (never create an item or inventory/held entry for things like "Free Hand" or "Empty Hand"; an unoccupied hand or slot is simply empty). RANGED WEAPONS HANDEDNESS RULE (DYNAMIC CONTEXTUAL REASONING): Ranged weapons (bows, crossbows, rifles, muskets, shotguns, carbines, blasters, slings, etc.) are NOT always two-handed! Yes, they CAN be used with two hands, but if a ranged weapon is not currently being actively fired, aimed, or braced, it is usually held in ONE HAND (1 hand slot under [CURRENTLY HOLDING], e.g. "[Main Hand] Oak Shortbow: Weight: 2 lbs. Dimensions: 48x4x1.5 inches" or "[Main Hand] Hunting Rifle: Weight: 7 lbs. Dimensions: 40x6x2 inches") because the character is just holding or carrying it by the grip, stock, or riser. This leaves their other hand completely free to draw an arrow or magazine, hold a torch, carry a shield or secondary weapon, cast spells, or interact with objects. It ONLY requires or occupies [Both Hands (Two-Handed)] dynamically when actively nocking/drawing, aiming down sights, shouldering to fire, bracing against recoil, or cocking/reloading, UNLESS other genuine situational context is detected by the AI (evaluated through realistic physical context and narrative intent, NOT simplistic keyword matching—such as holding in a braced high-ready tactical stance, sweeping corners, or tense standoff) that dictates both hands are currently gripping the weapon. CONTAINERS & GEAR INTEGRITY: Wallets, chit wallets, cardholders, coin pouches, money belts, quivers, and backpacks are EQUIPPED CONTAINERS, NEVER unequipped loose items or currency pieces! Consolidate all carried coins/funds inside their primary equipped container (never split across phantom unequipped pouches). Never output compliance/accounting header lines or meta entries like "Initialized Starting Gear" inside inventory lists or quivers. Ensure all secret locations use clean balanced hide[...] tags (e.g. "[Location: hide[Buried inside hollow oak tree]]").\nIf the starting context calls for solitude or isolation (e.g. waking alone in a cave, stranded on a deserted island, a solitary dungeon cell, or an abandoned derelict ship), it is completely valid and appropriate to start with no other characters.\nMOUNTS & VEHICLES: If mounts, riding beasts, carriages, or vehicles exist in the scene, ensure their files reflect their physical stats, speed, body weight, and any riding/passenger relationships with rider weight included in carried weight!\nAUTO ACTION RECOMMENDATIONS: Provide 2 to 4 rich, diverse, context-aware suggestions for the player's next move.\nCRITICAL: Any magic, abilities, or spells MUST be highly specific with strict limits, energy costs, ranges, and target caps. Vague "magic" is completely unacceptable. Initialize WorldTime.txt containing both [CURRENT ACTIVE TIME] and [ANCHOR / ORIGIN TIMELINE] with identical starting timestamps and Anchor Flow Mode set to Frozen.`;
         const res = await this.handleRequest(prompt, undefined, username, 'gemini-3.8-flash');
         if (res && this.lastActionUsage) {
           res.usage = { ...this.lastActionUsage };
@@ -1117,8 +1163,13 @@ ${userHeader}Player action to audit: ${action}`;
           if (audit.checks && Array.isArray(audit.checks) && audit.checks.length > 0) {
             const results = audit.checks.map((check: any) => {
               const safeName = check.name || check.check || check.stat || 'Action Check';
+              const safeDesc = check.description || check.reason || `Probability roll for ${safeName}`;
               const difficulty = check.difficulty || 'moderate';
-              const bonusResult = this.calculateBonusFromAI(check.modifiers || [], username);
+              const bonusResult = this.calculateBonusFromAI(check.modifiers || [], username, {
+                name: safeName,
+                description: safeDesc,
+                stat: check.stat
+              });
               const totalBonus = bonusResult.total;
               
               let safeThresholds: { [key: string]: number };
@@ -1203,6 +1254,7 @@ ${userHeader}Player action: ${action}
 TECHNICAL PLAN (Follow strictly):
 1. Resolve these checks: ${resolvedCheckReport || "None"}
    (NOTE: Each check above was rolled first using unbiased backend random generation (0-1000) and evaluated objectively against thresholds. Faithfully narrate the outcome without altering rolls or results).
+   - DYNAMIC COMBAT & MANEUVER SCALING RULE: Across all combat actions, maneuvers, and physical checks, precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold to dictate hit confirmation, critical placement, and positional execution. Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting.
 2. Create these files immediately: ${audit.filesToCreate?.join(', ') || "None"}
 3. Update these files: ${audit.filesToUpdate?.join(', ') || "None"}
 4. Temporal Shift: ${timeShiftNotice}
@@ -1213,6 +1265,7 @@ TECHNICAL PLAN (Follow strictly):
    - You MUST return structured "currencyTransactions": [ { "name": "...", "amount": positive number, "operation": "add"|"deduct"|"transfer", "container": "...", "recipient": "...", "giver": "..." } ].
    - You MUST include the currency change in "updates": { "type": "currency", "text": "+X Currency", "value": X }.
    - NEVER forget currency! Dynamically and accurately track and add all currency to balance and inventory.
+8. Training, Practice & Character Evolution: ${audit.progressionAudit?.isTrainingOrPractice ? `Training/practice activity identified: "${audit.progressionAudit.activity || 'skill'}" over ${audit.progressionAudit.duration || 'duration'}. Dynamically and proportionately update the character file ("${playerFile || 'character'}") with realistic modifier increases/refinements, new maneuvers under [ATTACKS & COMBAT ACTIONS], or abilities under [ABILITIES & MAGIC], emit corresponding stat/progression update(s), and describe the gradual mastery in the narrative.` : 'Dynamically evaluate if this action involves training, practice, conditioning, studying, meditating, or physical/mental discipline. If so, proportionately update modifiers or features in the character file scaled to duration/length and effort without hardcoded keywords.'}
 
 Process this action based on the technical plan. Ensure every new item, weapon, or entity is created with full technical details.
 
@@ -1242,6 +1295,7 @@ CRITICAL REMINDERS:
      * All secret stored items and caches MUST use clean balanced hide[...] tags (e.g. "[Location: hide[Buried inside hollow oak tree]]").
    - Under [CONTAINERS & CARRIED GEAR], under "- Carried Inventory (Inside Containers):", add the item formatted with detectable weight, dimensions, and container name: e.g. "- Iron Dagger: 2 lbs, 10x2 inches. Container: [Backpack]". Ensure the container exists under "- Containers Equipped/Carried:".
    - CONTAINER STRETCHING RULE: When containers stretch beyond base space, ONLY multiply/expand their physical size and dimensions (e.g. bulging depth and outer dimensions) instead of their weight. NEVER multiply the container's own empty weight with it! The empty weight of the container remains strictly constant; only the items inside add their own weight.
+   - CONSOLIDATED BUNDLE & STACK RULE (CRITICAL - ELIMINATE VOLUME ERRORS): Multi-count flat or stackable items (ammo, currency, scrip, bandages, cards, paper, coins, etc.) MUST be evaluated and formatted as a single consolidated bundle rather than multiplying individual item bounding boxes by total quantity. When processing or creating bulk items, calculate aggregate dimensions by multiplying ONLY the thickness axis while keeping length and width constant—or provide total stack dimensions directly in the item definition. For example, instead of listing "Amount: 45x [Sol-Standard Scrip] (4x4x0.1 in)" (which tricks parsers into multiplying bounding boxes to 72 cu in and falsely triggering overflow), format the entry as "1x Stack of 45 [Sol-Standard Scrip] (4x4x0.3 in, 0.15 lbs, 4.8 cu in)", ensuring the total volume cleanly clears container thresholds (e.g. an 8 cu in pouch) and removes drop hazards entirely.
    - If an item would overflow or exceeds container capacity, or is wearable and contextually sensible, equip under [Equipped Gear & Armor].
 5. STATS & ENERGY (DYNAMIC CONTEXTUAL REASONING):
    - Dynamically evaluate whether the action realistically requires noticeable physical or magical exertion.
@@ -1338,9 +1392,16 @@ CRITICAL REMINDERS:
          "refillResource": "Water|Oil|Arrows"
        }
      ]
-11. JSON SYNTAX: Close the "files" object with a curly brace "}" before "gameOver". NEVER close "files" with a square bracket "]".
-12. PLAYER ACTION PRESERVATION (CRITICAL): Do NOT change, sanitize, or alter what the player chose to do, even if their action seems strange, silly, reckless, or "doesn't make sense". A player can attempt ANY action within their context unless it is strictly physically/magically impossible. Faithfully narrate and resolve the exact action they took and authentic consequences in the world.
-13. ANTI-LAZINESS & CRAFTSMANSHIP MANDATE (CRITICAL):
+11. DYNAMIC TRAINING, PRACTICE, CONDITIONING & CHARACTER EVOLUTION (CRITICAL):
+    - When a character practices, trains, exercises, meditates, studies, or conditions over a period or duration:
+      * DURATION & EFFORT SCALING: Progression scales realistically to the length of time and intensity (minutes vs hours vs days vs weeks).
+      * MODIFIER & FEATURE UPDATES: Proportionately increase or refine check modifiers, accuracy, attribute bonuses, or parry/dodge values under [STATS & MODIFIERS], add newly developed maneuvers or combat actions under [ATTACKS & COMBAT ACTIONS], or add new spells/channeling disciplines under [ABILITIES & MAGIC].
+      * OVERCOMING PENALTIES: Practice can also reduce or eliminate awkwardness, unfamiliarity, or negative modifiers.
+      * PERSISTENCE & UPDATES: You MUST include the updated character file in 'files' and record the change in 'updates' (e.g. {"type": "stat", "text": "+1% Accuracy from Sword Drills", "value": 1} or {"type": "misc", "text": "Learned Technique: Vaulting Strike", "value": 1}).
+      * NO HARDCODED KEYWORDS: Evaluate everything dynamically and authentically based on the character's biology, abilities, and the actual practice context.
+12. JSON SYNTAX: Close the "files" object with a curly brace "}" before "gameOver". NEVER close "files" with a square bracket "]".
+13. PLAYER ACTION PRESERVATION (CRITICAL): Do NOT change, sanitize, or alter what the player chose to do, even if their action seems strange, silly, reckless, or "doesn't make sense". A player can attempt ANY action within their context unless it is strictly physically/magically impossible. Faithfully narrate and resolve the exact action they took and authentic consequences in the world.
+14. ANTI-LAZINESS & CRAFTSMANSHIP MANDATE (CRITICAL):
     - NEVER be lazy. Do NOT cut corners, skip file sections, or produce rushed, hollow one-liner narratives.
     - Every file in the "files" map MUST be written out completely from top to bottom with zero placeholders, zero abbreviations, and zero omitted containers, currency, items, or stats.
     - Write an immersive, multi-paragraph narrative (2-4 rich paragraphs) that fully finishes and resolves the player's action with realistic physical feedback, environmental reactions, and dialogue.`;
@@ -2077,7 +2138,11 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
         const detectedMods = await this.detectRelevantModifiers(safeDesc, worldState, username);
 
         // 2. CALCULATE BONUS FROM DETECTED MODS (System Math)
-        const bonusResult = this.calculateBonusFromAI(detectedMods, username);
+        const bonusResult = this.calculateBonusFromAI(detectedMods, username, {
+          name: safeName,
+          description: safeDesc,
+          stat: check.stat
+        });
         const globalBonus = bonusResult.total;
 
         // Apply manual modifier if present, added to the global bonus
@@ -2144,10 +2209,12 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
       ).join(' ');
 
       const followUpPrompt = `PREVIOUS CONTEXT: ${userPrompt}\n\n[SYSTEM: Probability Engine Results]\n\n${resultReport}\n\nBased on these FAIR and FINAL results, generate the highly detailed narrative and extensive file updates. Calculate exact dynamic outcomes (e.g., damage = base * probability result) WITHOUT using dice notation. 
+      DYNAMIC COMBAT SCALING MANDATE (CRITICAL): Precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold (dictating hit confirmation, critical placement, and positional execution). Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting.
       CRITICAL: You MUST include the exact text "${fullDetailsHtml}" at the very beginning or end of your narrative so the player can click to see the full mathematical details. Do not alter the formatting of that string. Include the Check Name and Result (e.g. "[Jump: Failure]") natively in the narrative text as well.
       DYNAMIC STAT & HEALTH UPDATES (WHEN APPLICABLE):
       - If this action results in damage, injury, or healing, dynamically update the affected character/entity file(s) in 'files' with their new Health calculated in [STATS & MODIFIERS] and include the stat change in the 'updates' array.
-      - If this action genuinely consumes stamina, mana, or energy (from noticeable physical exertion, combat, or spellcasting), or restores energy (from resting/sleeping), dynamically update the character's file with their new Energy/Mana/Stamina value in [STATS & MODIFIERS] and include the stat change in the 'updates' array. Do NOT deduct energy for menial, low-effort tasks like talking, standing, observing, or casual interactions.`;
+      - If this action genuinely consumes stamina, mana, or energy (from noticeable physical exertion, combat, or spellcasting), or restores energy (from resting/sleeping), dynamically update the character's file with their new Energy/Mana/Stamina value in [STATS & MODIFIERS] and include the stat change in the 'updates' array. Do NOT deduct energy for menial, low-effort tasks like talking, standing, observing, or casual interactions.
+      - If this action involves training, practice, conditioning, studying, or repetitive skill development over a duration, dynamically evaluate the length and effort: proportionately adjust or add modifiers, attacks, or abilities in the character's file under [STATS & MODIFIERS], [ATTACKS & COMBAT ACTIONS], or [ABILITIES & MAGIC], emit an update in 'updates', and narrate the gradual mastery authentically without hardcoded keywords.`;
 
       // We make a fresh call with the context combined, as we don't maintain a full chat history object here 
       // (The FS is the history source of truth).
@@ -5301,7 +5368,8 @@ ${worldContext}
 INSTRUCTIONS:
 1. Identify every factor that mathematically influences the outcome based on CONTEXT (not just literal matches).
 2. For each factor, extract the "Mathematical Essence" exactly as written in the text.
-   - For stats/formulas (e.g. "Strength: base + 10%(1000)"), extract the math after the colon.
+   - For stats/formulas (e.g. "Dexterity: base + 10%(1000)" or "Training Experience: +5%(1000)"), extract the math after the colon.
+   - NOTE ON STRENGTH VS DAMAGE: For attack accuracy/hit confirmation checks (punches, strikes, swings, shots), Strength does NOT apply to the hit success rate (Strength exclusively scales damage and knockdown upon landing a hit). Only include Strength in the check if the action is contextually a grapple, wrestling pin, hold, shove, or direct contest of physical power/leverage.
    - For flat bonuses (e.g. "+5 to hit"), extract the value.
    - For status effects (e.g. "[Status:Bleeding: -10]"), extract the value.
 3. Only include factors that apply to the ACTOR or the WORLD generally.
@@ -5329,13 +5397,48 @@ INSTRUCTIONS:
   }
 
   /**
-   * Calculates numeric bonus from a specific set of AI-selected rule strings.
+   * Determines whether a force-oriented attribute like Strength should apply to the
+   * success rate (hit threshold) of a check, or strictly to damage/knockdown.
+   *
+   * - Usually, Strength only applies to DAMAGE, penetration, and knockdown thresholds,
+   *   NOT whether an attack hits (a punch's accuracy is determined by training experience,
+   *   technique, or dexterity, not raw strength).
+   * - Contextual Exception: Strength DOES apply to success rate when the action contextually requires
+   *   physical force, leverage, grip, or restraint to succeed—such as grappling (keeping a creature
+   *   getting grappled staying there successfully), wrestling/pinning, escaping a hold, shoving,
+   *   bull-rushing, lifting, moving heavy barriers, or resisting knockdown.
    */
+  public static isForceApplicableToCheckSuccess(checkName: string = '', checkDesc: string = '', statName: string = ''): boolean {
+    const combined = `${checkName} ${checkDesc} ${statName}`.toLowerCase();
+
+    // Contexts where Strength DOES legitimately determine the success rate:
+    const isDirectForceOrRestraintContest = 
+      /\b(grapple|grappling|wrestle|wrestling|pin|pinning|restrain|restraint|hold\s*(?:down|in\s*place|opponent|creature)?|maintain\s*hold|break\s*(?:free|out|bonds|restraint|chains)|shove|bull-rush|bullrush|tackle|overpower|lift|lifting|haul|heave|push\s*(?:heavy|boulder|wagon|door)|drag|force\s*(?:door|gate|open)|bend\s*bars|resist\s*(?:knockdown|shove|push|drag)|overrun)\b/i.test(combined);
+
+    if (isDirectForceOrRestraintContest) {
+      return true;
+    }
+
+    // Attacks, strikes, punches, swings, shots, slashes, stabs, and weapon hits:
+    const isAttackOrStrike =
+      /\b(punch|jab|cross|strike|kick|swing|slash|stab|thrust|attack|hit|accuracy|shot|arrow|fire|aim|cleave|slice|smash|bash|bite|claw|swipe)\b/i.test(combined);
+
+    if (isAttackOrStrike) {
+      return false;
+    }
+
+    return /\b(athletics|feats?\s*of\s*strength|brute\s*force|leverage)\b/i.test(combined);
+  }
+
   /**
    * Calculates numeric bonus from AI-detected structured modifiers.
    * Resolves formulas and variables using the system's math engine.
    */
-  private calculateBonusFromAI(detected: DetectedModifier[], username?: string): { total: number, breakdown: string } {
+  private calculateBonusFromAI(
+    detected: DetectedModifier[],
+    username?: string,
+    checkContext?: { name?: string; description?: string; stat?: string }
+  ): { total: number, breakdown: string } {
     const files = this.fs.getAll();
     let totalBonus = 0;
     const breakdownParts: string[] = [];
@@ -5354,6 +5457,16 @@ INSTRUCTIONS:
 
     for (const mod of sorted) {
       const rhs = mod.math.trim();
+
+      // Check if this modifier is a force-oriented attribute (Strength, Brawn, Muscle, etc.)
+      const modText = `${mod.label} ${mod.math} ${mod.reasoning || ''}`.toLowerCase();
+      const isForceMod = /\b(strength|brawn|muscle|pneumatic|hydraulic|kinetic\s*force|raw\s*power)\b/i.test(modText);
+
+      if (isForceMod && checkContext && !AIEngine.isForceApplicableToCheckSuccess(checkContext.name, checkContext.description, checkContext.stat)) {
+        // Strength does NOT apply to hit accuracy for punches/strikes/weapon attacks (scales damage/knockdown instead)
+        breakdownParts.push(`${mod.label}: +0 (Strength scales damage/knockdown, not hit accuracy; training/dexterity determines hit rate)`);
+        continue;
+      }
 
       // Determine if it's a complex formula (system math required)
       const isFormula = rhs.includes('base') || (rhs.split('+').length > 1);
