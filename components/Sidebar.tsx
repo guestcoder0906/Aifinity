@@ -1048,11 +1048,23 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   <div className="text-[8.5px] text-neutral-400 pl-1 flex items-center justify-between">
                                     <span className="truncate">Anatomy: {pStats.holdingCapacity.holdingLimbsDescription}</span>
                                     <span className="text-neutral-500 shrink-0">
-                                      Slots: {pStats.handSlots !== undefined ? pStats.handSlots : pStats.holdingCapacity.maxStandardHoldCount} (Start Max: {pStats.maxStartingCarryingItems || (pStats.handSlots !== undefined ? pStats.handSlots : pStats.holdingCapacity.maxStandardHoldCount || 2) * 2})
+                                      Slots: {pStats.handSlots !== undefined ? pStats.handSlots : pStats.holdingCapacity.maxStandardHoldCount} | Size: {pStats.holdingCapacity.currentHeldSize ?? 0}/{pStats.holdingCapacity.maxStandardHoldSize || 12}
                                     </span>
                                   </div>
 
-                                  {Boolean(pStats.holdingCapacity.hasOverflowHold) && (
+                                  {Boolean(pStats.holdingCapacity.hasHoldingSizeOverflow) && (
+                                    <div className="text-[8px] bg-red-950/70 border border-red-800/80 text-red-200 rounded px-1.5 py-0.5 flex items-center justify-between">
+                                      <span className="flex items-center gap-1 truncate">
+                                        <AlertTriangle size={9} className="text-red-400 shrink-0" />
+                                        <span>Size Overflow: Exceeds {pStats.holdingCapacity.maxStandardHoldSize || 12} max capacity!</span>
+                                      </span>
+                                      <span className="font-mono font-bold text-red-300 shrink-0">
+                                        {pStats.holdingCapacity.currentHeldSize} / {pStats.holdingCapacity.maxStandardHoldSize || 12} pts
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {Boolean(pStats.holdingCapacity.hasOverflowHold) && !pStats.holdingCapacity.hasHoldingSizeOverflow && (
                                     <div className="text-[8px] bg-red-950/60 border border-red-800/70 text-red-300 rounded px-1.5 py-0.5 flex items-center justify-between">
                                       <span className="flex items-center gap-1 truncate">
                                         <AlertTriangle size={9} className="text-red-400 shrink-0" />
@@ -1102,12 +1114,30 @@ const Sidebar: React.FC<SidebarProps> = ({
                                           }
                                           return (
                                             <div key={hi} className={`p-1 rounded ${it.isOverflowHold ? 'bg-red-950/40 border border-red-900/60' : 'bg-neutral-950/60'}`}>
-                                              <div className="flex justify-between items-center">
-                                                <span className="font-medium text-amber-200">
-                                                  • {it.holdingLimb ? <span className="text-neutral-400 font-normal">[{it.holdingLimb}] </span> : null}
-                                                  {cleanDisplayName}
-                                                </span>
-                                                <span className="font-mono text-gray-400 text-[8.5px]">
+                                              <div className="flex justify-between items-center gap-1">
+                                                <div className="flex items-center gap-1 min-w-0 font-medium text-amber-200 truncate">
+                                                  <span>•</span>
+                                                  {it.holdingLimb ? <span className="text-neutral-400 font-normal shrink-0">[{it.holdingLimb}]</span> : null}
+                                                  <span className="truncate">{cleanDisplayName}</span>
+                                                  {it.sizeCategory && (
+                                                    <span className={`text-[7.5px] px-1 py-0.2 rounded font-mono shrink-0 uppercase ${
+                                                      it.isContextExempt
+                                                        ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40'
+                                                        : it.sizeCategory === 'large'
+                                                          ? 'bg-red-950/80 text-red-300 border border-red-800/60 font-bold'
+                                                          : it.sizeCategory === 'big'
+                                                            ? 'bg-orange-950/80 text-orange-300 border border-orange-800/60'
+                                                            : it.sizeCategory === 'medium'
+                                                              ? 'bg-blue-950/70 text-blue-300 border border-blue-800/40'
+                                                                : it.sizeCategory === 'small'
+                                                                  ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/40'
+                                                                  : 'bg-neutral-800 text-neutral-300 border border-neutral-700'
+                                                    }`} title={`Size Category: ${it.sizeCategory} (${it.sizeCategoryScore ?? 0} pts, ${it.sizePercentage || 0}% scale)`}>
+                                                      {it.isContextExempt ? 'Spectral (0)' : `${it.sizeCategory} (${it.sizeCategoryScore ?? 0})`}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <span className="font-mono text-gray-400 text-[8.5px] shrink-0">
                                                   {it.weight} lbs ({(() => {
                                                     const raw = it.dimensions?.raw || '';
                                                     const dimMatch = raw.match(/([0-9.]+\s*x\s*[0-9.]+(?:\s*x\s*[0-9.]+)?\s*(?:in|inch|inches|cm|m|ft)?)/i);
@@ -1124,11 +1154,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                 <div className="text-[8px] text-red-400 flex items-center justify-between mt-0.5 pt-0.5 border-t border-red-900/40">
                                                   <div className="flex items-center gap-1 truncate pr-1">
                                                     <AlertTriangle size={9} className="shrink-0 text-red-400" />
-                                                    <span className="truncate">{it.overflowWarning || 'Held with overflow; heavier/bulkier items drop first.'}</span>
+                                                    <span className="truncate">{it.overflowWarning || 'Held with overflow; bigger/heavier items drop first.'}</span>
                                                   </div>
                                                   {it.dropChancePercent !== undefined && (
                                                     <span className="font-mono font-bold text-red-200 shrink-0">
-                                                      {it.dropChancePercent}% drop
+                                                      {it.dropPriorityRank ? `Drop #${it.dropPriorityRank}: ` : ''}{it.dropChancePercent}% drop
                                                     </span>
                                                   )}
                                                 </div>
@@ -1159,9 +1189,26 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 {pStats.equippedGear.length > 0 ? (
                                   <div className="text-[9px] text-gray-300 pl-1 border-l border-emerald-800/60 space-y-0.5">
                                     {pStats.equippedGear.map((it, gi) => (
-                                      <div key={gi} className="flex justify-between items-center">
-                                        <span>• {it.name}</span>
-                                        <span className="font-mono text-gray-500">{it.weight} lbs ({it.dimensions.raw || 'No dim'})</span>
+                                      <div key={gi} className="flex justify-between items-center text-[9px]">
+                                        <div className="flex items-center gap-1 truncate pr-1">
+                                          <span className="truncate">• {it.name}</span>
+                                          {it.sizeCategory && (
+                                            <span className={`text-[7px] px-1 py-0.1 rounded font-mono uppercase shrink-0 ${
+                                              it.isContextExempt
+                                                ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40'
+                                                : it.sizeCategory === 'large'
+                                                  ? 'bg-red-950/70 text-red-300 border border-red-800/50'
+                                                  : it.sizeCategory === 'big'
+                                                    ? 'bg-orange-950/70 text-orange-300 border border-orange-800/50'
+                                                    : it.sizeCategory === 'medium'
+                                                      ? 'bg-blue-950/60 text-blue-300 border border-blue-800/40'
+                                                      : 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/40'
+                                            }`} title={`Size: ${it.sizeCategory} (${it.sizeCategoryScore ?? 0} pts, ${it.sizePercentage || 0}%)`}>
+                                              {it.isContextExempt ? 'Spectral (0)' : `${it.sizeCategory} (${it.sizeCategoryScore ?? 0})`}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="font-mono text-gray-500 text-[8.5px] shrink-0">{it.weight} lbs ({it.dimensions.raw || 'No dim'})</span>
                                       </div>
                                     ))}
                                   </div>
@@ -1291,9 +1338,26 @@ const Sidebar: React.FC<SidebarProps> = ({
                                               <div className="space-y-0.5 pt-0.5">
                                                 {cont.items.map((it, ii) => (
                                                   <div key={ii} className="flex justify-between items-center text-[9px] hover:bg-neutral-900/40 px-1 py-0.5 rounded">
-                                                    <span className={`truncate pr-1 ${it.doesNotFit ? 'text-red-400 font-semibold' : it.isOverflow ? 'text-amber-300 font-semibold' : 'text-gray-300'}`}>
-                                                      • {it.name} {it.doesNotFit ? '⛔ (Does Not Fit)' : it.isOverflow ? `⚠️ (Overflow: ${it.dropChancePercent || 25}% Drop Risk)` : ''}
-                                                    </span>
+                                                    <div className="flex items-center gap-1 truncate pr-1">
+                                                      <span className={`truncate ${it.doesNotFit ? 'text-red-400 font-semibold' : it.isOverflow ? 'text-amber-300 font-semibold' : 'text-gray-300'}`}>
+                                                        • {it.name} {it.doesNotFit ? '⛔ (Does Not Fit)' : it.isOverflow ? `⚠️ (${it.dropChancePercent || 25}% Drop Risk)` : ''}
+                                                      </span>
+                                                      {it.sizeCategory && (
+                                                        <span className={`text-[7px] px-1 py-0.1 rounded font-mono uppercase shrink-0 ${
+                                                          it.isContextExempt
+                                                            ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40'
+                                                            : it.sizeCategory === 'large'
+                                                              ? 'bg-red-950/70 text-red-300 border border-red-800/50'
+                                                              : it.sizeCategory === 'big'
+                                                                ? 'bg-orange-950/70 text-orange-300 border border-orange-800/50'
+                                                                : it.sizeCategory === 'medium'
+                                                                  ? 'bg-blue-950/60 text-blue-300 border border-blue-800/40'
+                                                                  : 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/40'
+                                                        }`} title={`Size: ${it.sizeCategory} (${it.sizeCategoryScore ?? 0} pts, ${it.sizePercentage || 0}%)`}>
+                                                          {it.isContextExempt ? 'Spectral (0)' : `${it.sizeCategory} (${it.sizeCategoryScore ?? 0})`}
+                                                        </span>
+                                                      )}
+                                                    </div>
                                                     <span className="font-mono text-gray-500 text-[8px] shrink-0">
                                                       {it.weight} lbs {it.dimensions.raw ? `(${it.dimensions.raw})` : ''}
                                                     </span>

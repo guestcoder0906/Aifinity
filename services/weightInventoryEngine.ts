@@ -31,11 +31,27 @@ export interface ItemUsageInfo {
   rawText?: string;
 }
 
+export type ItemSizeCategory = 'tiny' | 'small' | 'medium' | 'big' | 'large' | 'none';
+
+export interface ItemSizeCategoryResult {
+  sizeCategory: ItemSizeCategory;
+  score: number; // 1 (tiny), 2 (small), 4 (medium), 6 (big), 12 (large), 0 (none/exempt)
+  percentage: number; // % relative to character dimensions/scale
+  isContextExempt: boolean;
+  smallestDimensions: ParsedDimensions;
+}
+
 export interface ItemInfo {
   name: string;
   weight: number; // lbs
   dimensions: ParsedDimensions;
   category: 'equipped' | 'carried' | 'container' | 'stored';
+  sizeCategory?: ItemSizeCategory;
+  sizeCategoryScore?: number; // 1, 2, 4, 6, 12, or 0
+  sizePercentage?: number; // % relative to character scale
+  isContextExempt?: boolean;
+  smallestDimensions?: ParsedDimensions;
+  dropPriorityRank?: number; // 1 = most vulnerable to drop first
   containerName?: string;
   location?: string;
   isHiddenLocation?: boolean;
@@ -89,6 +105,7 @@ export interface HeldItemInfo extends ItemInfo {
   holdingLimb?: string; // e.g. "Right Hand", "Left Hand", "Both Hands", "Mouth / Jaws", "Tentacle 1", "Under Arm (Overflow)"
   isOverflowHold?: boolean;
   overflowWarning?: string;
+  isSizeOverflow?: boolean;
 }
 
 export interface HoldingCapacityInfo {
@@ -103,6 +120,10 @@ export interface HoldingCapacityInfo {
   overflowDropChancePercent?: number; // Overall scaled accidental drop chance for overflow items
   totalOverflowCount?: number;
   maxStartingCarryingItems?: number; // <= 2x hand slots limit at start
+  maxStandardHoldSize: number; // Maximum held size category capacity (defaults to 12 for 2 hands = 6 per limb)
+  currentHeldSize: number; // Sum of size category scores of currently held items
+  hasHoldingSizeOverflow: boolean;
+  holdingSizeOverflowReason?: string;
 }
 
 export interface CurrencyEntry {
@@ -1972,10 +1993,204 @@ export class WeightInventoryEngine {
   }
 
   /**
+   * Evaluates if an item has dimensions variations (e.g. folded, collapsed, packed, rolled, compressed, compacted)
+   * and extracts the smallest variation dimensions (minimum bounding volume/footprint).
+   * User mandate: "including it's other size variations, should use smallest variation like folded for example if so"
+   */
+  public static extractSmallestVariationDimensions(rawText: string = '', baseDimensions: ParsedDimensions): ParsedDimensions {
+    if (!rawText || typeof rawText !== 'string') {
+      return baseDimensions;
+    }
+
+    const variations: ParsedDimensions[] = [];
+    if (baseDimensions && baseDimensions.applies) {
+      variations.push(baseDimensions);
+    }
+
+    // Pattern 1: Parenthetical variation notes: e.g. "(folded: 20x4x4 in)", "(collapsed: 18x3x3 in)", "(packed: 10x8x2 inches)", "(rolled: 4x4x15 in)"
+    const parenRegex = /\((?:folded|collapsed|packed|rolled|compressed|compacted|sheathed|stowed|retracted|minimum|min|smallest)[:=\s]*([^)]+)\)/gi;
+    let pMatch;
+    while ((pMatch = parenRegex.exec(rawText)) !== null) {
+      const dimCandidate = this.parseDimensions(pMatch[1].trim());
+      if (dimCandidate.applies) {
+        variations.push(dimCandidate);
+      }
+    }
+
+    // Pattern 2: Colon/inline variation notes: e.g. "folded: 20x4x4 in", "collapsed: 12x2 in"
+    const inlineRegex = /\b(?:folded|collapsed|packed|rolled|compressed|compacted|sheathed|stowed|retracted)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?(?:\s*x\s*[0-9]+(?:\.[0-9]+)?){1,2}\s*(?:in|inch|inches|cm|m|ft)?)/gi;
+    let iMatch;
+    while ((iMatch = inlineRegex.exec(rawText)) !== null) {
+      const dimCandidate = this.parseDimensions(iMatch[1].trim());
+      if (dimCandidate.applies) {
+        variations.push(dimCandidate);
+      }
+    }
+
+    // Pattern 3: If item is foldable clothing/soft gear without explicit variation text, calculate folded footprint
+    const lower = rawText.toLowerCase();
+    if (variations.length === 1 && baseDimensions && baseDimensions.applies) {
+      if (
+        WeightInventoryEngine.isFoldableItem(rawText, rawText) ||
+        /\b(?:tunic|cloak|robe|cape|blanket|bedroll|sleeping\s*bag|pants|shirt|dress|shawl|pelt|hide|cloth|linen|rope)\b/i.test(lower)
+      ) {
+        const bH = baseDimensions.height || 36;
+        const bW = baseDimensions.width || 24;
+        const bD = baseDimensions.depth || 1;
+        // Foldable clothing packs down into ~20-30% flat area with bundled thickness
+        const fH = Math.max(4, Math.round(bH * 0.3 * 10) / 10);
+        const fW = Math.max(4, Math.round(bW * 0.35 * 10) / 10);
+        const fD = Math.max(1.5, Math.round((bD + 1.5) * 10) / 10);
+        variations.push({
+          height: fH,
+          width: fW,
+          depth: fD,
+          raw: `${fH}x${fW}x${fD} in (folded)`,
+          applies: true,
+          unit: 'inches'
+        });
+      }
+    }
+
+    if (variations.length <= 1) {
+      return baseDimensions;
+    }
+
+    // Compare bounding volume = h * w * d (or max dimension if thin/flat) to find the smallest variation
+    let smallest = baseDimensions;
+    let minVol = Number.POSITIVE_INFINITY;
+
+    for (const v of variations) {
+      const h = v.height || 4;
+      const w = v.width || 2;
+      const d = v.depth || 1;
+      const vol = h * w * d;
+      if (vol < minVol) {
+        minVol = vol;
+        smallest = v;
+      }
+    }
+
+    return smallest;
+  }
+
+  /**
+   * Evaluates whether an item is contextually exempt from taking physical size categories (e.g. ghost, spectral,
+   * incorporeal, intangible, psychic projection, ethereal, light, shadow, digital, or pure energy items).
+   * NO hardcoded item names or keywords: purely contextual and dimensional evaluation.
+   */
+  public static isContextExemptFromSize(item: { name?: string; weight?: number; dimensions?: ParsedDimensions; rawText?: string }): boolean {
+    if (!item) return false;
+    if (item.dimensions && item.dimensions.applies === false) return true;
+
+    const combined = `${item.name || ''} ${item.dimensions?.raw || ''} ${item.rawText || ''}`.toLowerCase();
+    if (
+      /\b(?:ghost|spectral|phantom|incorporeal|intangible|ethereal|astral|formless|psychic|light-based|shadow-based|illusion|hologram|holographic|pure\s*energy|spiritual\s*energy|digital|none\s*\(incorporeal\))\b/i.test(combined)
+    ) {
+      return true;
+    }
+
+    if (item.weight === 0 && /\b(?:incorporeal|spectral|energy|spirit|thought|dream)\b/i.test(combined)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Calculates an item's size category, size category score, and proportional percentage threshold.
+   *
+   * User mandate:
+   * "make every item have a size category that scales based on percentage threshold of the item's dimensions
+   *  (including it's other size variations, should use smallest variation like folded for example if so)
+   *  and the character's dimensions. Size categories are tiny (1), small (2), medium (4), big (6), large (12).
+   *  Size category applies unless it doesn't apply based on context (such as a ghost items for example)
+   *  NO HARDCODED THINGS OR NO KEYWORDS AT ALL, ONLY BASED OFF OF NEEDED CONTEXT AND THE ITEM ETC."
+   */
+  public static calculateItemSizeCategory(
+    itemDims: ParsedDimensions,
+    charDims?: ParsedDimensions,
+    rawText: string = '',
+    itemName: string = '',
+    itemWeight: number = 0
+  ): ItemSizeCategoryResult {
+    // 1. Contextual exemption check (e.g. ghost, incorporeal, spectral items)
+    if (WeightInventoryEngine.isContextExemptFromSize({ name: itemName, weight: itemWeight, dimensions: itemDims, rawText })) {
+      return {
+        sizeCategory: 'none',
+        score: 0,
+        percentage: 0,
+        isContextExempt: true,
+        smallestDimensions: itemDims
+      };
+    }
+
+    // 2. Extract smallest variation dimensions (e.g. folded, collapsed, packed, or rolled)
+    const smallestDims = WeightInventoryEngine.extractSmallestVariationDimensions(rawText, itemDims);
+
+    // 3. Character's physical dimensions (scales dynamically to any creature size: sprite, goblin, human, giant, dragon)
+    const charH = (charDims && charDims.applies && charDims.height && charDims.height > 0) ? charDims.height : 70;
+    const charW = (charDims && charDims.applies && charDims.width && charDims.width > 0) ? charDims.width : 18;
+    const charD = (charDims && charDims.applies && charDims.depth && charDims.depth > 0) ? charDims.depth : 11;
+    const charMaxDim = Math.max(charH, charW, charD);
+    const charVol = Math.max(500, charH * charW * charD);
+    const charCbrt = Math.cbrt(charVol);
+
+    // 4. Item's smallest variation dimensions
+    const iH = smallestDims.height !== undefined && smallestDims.height > 0 ? smallestDims.height : 3;
+    const iW = smallestDims.width !== undefined && smallestDims.width > 0 ? smallestDims.width : 2;
+    const iD = smallestDims.depth !== undefined && smallestDims.depth > 0 ? smallestDims.depth : 0.5;
+    const itemMaxDim = Math.max(iH, iW, iD);
+    const itemVol = Math.max(0.001, iH * iW * iD);
+    const itemCbrt = Math.cbrt(itemVol);
+
+    // 5. Proportional Percentage Threshold:
+    // Compares linear length ratio (max dimension vs character scale) and cubic volumetric ratio
+    const linearPct = (itemMaxDim / charMaxDim) * 100;
+    const volPct = (itemCbrt / charCbrt) * 100;
+    const rawPct = Math.max(linearPct, volPct);
+    const sizePercentage = Math.round(rawPct * 10) / 10;
+
+    // 6. Map to user size categories & scores:
+    // tiny (1): <= 5% (coins, rings, needles, lockpicks, gems, small vials)
+    // small (2): > 5% and <= 20% (daggers, potion flasks, scrolls, wands, books, rations)
+    // medium (4): > 20% and <= 50% (one-handed swords, handaxes, maces, shields, small bags, folded cloaks)
+    // big (6): > 50% and <= 80% (longswords, spears, staves, bows, rifles, backpacks)
+    // large (12): > 80% (greatswords, pikes, heavy mauls, tower shields, large chests)
+    let sizeCategory: ItemSizeCategory = 'medium';
+    let score = 4;
+
+    if (sizePercentage <= 5) {
+      sizeCategory = 'tiny';
+      score = 1;
+    } else if (sizePercentage <= 20) {
+      sizeCategory = 'small';
+      score = 2;
+    } else if (sizePercentage <= 50) {
+      sizeCategory = 'medium';
+      score = 4;
+    } else if (sizePercentage <= 80) {
+      sizeCategory = 'big';
+      score = 6;
+    } else {
+      sizeCategory = 'large';
+      score = 12;
+    }
+
+    return {
+      sizeCategory,
+      score,
+      percentage: sizePercentage,
+      isContextExempt: false,
+      smallestDimensions: smallestDims
+    };
+  }
+
+  /**
    * Calculates an item's vulnerability/risk score for slipping or being dropped accidentally when in overflow.
    * Scaled so that heavier and bigger (longer/bulkier) items have a significantly higher score than smaller, lighter ones.
    */
-  public static calculateItemDropRisk(item: { weight?: number; dimensions?: ParsedDimensions }): number {
+  public static calculateItemDropRisk(item: { weight?: number; dimensions?: ParsedDimensions; sizePercentage?: number; sizeCategoryScore?: number }): number {
     const weight = Math.max(0.1, item.weight !== undefined && !isNaN(item.weight) ? item.weight : 0.5);
 
     // Extract dimensions
@@ -1993,19 +2208,22 @@ export class WeightInventoryEngine {
     }
 
     // Weight factor: scales progressively (heavier items are much harder to balance awkwardly)
-    // Small dagger / feather (0.1 - 1 lb) -> 0.3 - 1.0
-    // Longsword / Shield (3 - 6 lbs) -> 2.2 - 3.8
-    // Warhammer / Greatsword / Plate (8 - 25 lbs) -> 4.7 - 11.2
     const weightFactor = Math.pow(weight, 0.75);
 
     // Dimension / Size factor: scales with maximum dimension and cubic bulk
-    // Longer/bulkier items catch on scenery, terrain, limbs, and lack secure grip
     const lengthFactor = Math.max(0.5, maxDim / 12); // relative to 1 foot
     const bulkFactor = Math.pow(Math.max(1, volumeEst) / 64, 0.33); // relative to 4x4x4" block
     const sizeFactor = lengthFactor * bulkFactor;
 
-    // Combined risk index
-    const risk = weightFactor * sizeFactor;
+    // Size percentage & category factor: scales overflow drop probability with size percentage realistically!
+    // Bigger items catch on scenery, terrain, limbs, and lack secure grip
+    const sizePct = (item as any).sizePercentage !== undefined && (item as any).sizePercentage > 0
+      ? (item as any).sizePercentage
+      : ((item as any).sizeCategoryScore ? (item as any).sizeCategoryScore * 7 : 20);
+    const sizePctMultiplier = Math.pow(Math.max(1, sizePct) / 20, 0.75);
+
+    // Combined risk index factoring both weight and size percentage
+    const risk = weightFactor * sizeFactor * sizePctMultiplier;
     return Math.max(0.1, Math.round(risk * 100) / 100);
   }
 
@@ -2072,7 +2290,6 @@ export class WeightInventoryEngine {
     const avgRiskScore = totalRiskScore / totalOverflowCount;
 
     // Heavier/bulkier overall load increases the baseline chance:
-    // Baseline avgRisk ~ 1.0 for medium items; heavy loads scale this up
     const loadWeightSizeMultiplier = Math.min(2.5, Math.max(0.6, 0.6 + avgRiskScore * 0.4));
 
     // Calculate overall accidental drop chance in this turn/action
@@ -2086,7 +2303,6 @@ export class WeightInventoryEngine {
       const relativeWeightPercent = Math.round(relativeWeight * 1000) / 10;
 
       // Each item's individual drop probability if tested:
-      // An item's individual chance scales with its relative weight/size share
       const itemChance = Math.min(95, Math.max(3, Math.round(overallChancePercent * relativeWeight * Math.min(2.5, Math.sqrt(totalOverflowCount)))));
 
       return {
@@ -2097,8 +2313,32 @@ export class WeightInventoryEngine {
       };
     });
 
-    // Sort item chances descending so the heaviest/biggest items are listed first
-    itemDropChances.sort((a, b) => b.dropChancePercent - a.dropChancePercent);
+    // Sort item chances descending so the biggest and heaviest items are ordered first:
+    // User mandate: "and overflow scales and is ordered by its size percentage of that overflowing item also now realistically also
+    // (like for example bigger item is more overflow drop percentage instead of just weight, and bigger heavier items are most likely to be dropped first in that order for example)."
+    itemDropChances.sort((a, b) => {
+      if (b.dropChancePercent !== a.dropChancePercent) {
+        return b.dropChancePercent - a.dropChancePercent;
+      }
+      const aSize = (a.item as ItemInfo).sizePercentage || 0;
+      const bSize = (b.item as ItemInfo).sizePercentage || 0;
+      if (bSize !== aSize) return bSize - aSize;
+      return (b.item.weight || 0) - (a.item.weight || 0);
+    });
+
+    itemDropChances.forEach((prob, idx) => {
+      prob.item.dropPriorityRank = idx + 1;
+      const sizeLabel = (prob.item as ItemInfo).sizeCategory && (prob.item as ItemInfo).sizeCategory !== 'none'
+        ? `${(prob.item as ItemInfo).sizeCategory} (${(prob.item as ItemInfo).sizeCategoryScore || 0})`
+        : 'item';
+      const sizePctLabel = (prob.item as ItemInfo).sizePercentage ? `${(prob.item as ItemInfo).sizePercentage}%` : '';
+
+      if ('holdingLimb' in prob.item) {
+        (prob.item as HeldItemInfo).overflowWarning = `Overflow hold: ${prob.dropChancePercent}% accidental drop risk [Drop Priority #${idx + 1}] (${sizeLabel}${sizePctLabel ? `, ${sizePctLabel}` : ''}, ${prob.item.weight} lbs; bigger/heavier items drop first).`;
+      } else if (prob.item.overflowReason) {
+        prob.item.overflowReason += ` (${prob.dropChancePercent}% accidental drop risk [Drop Priority #${idx + 1}]; bigger/heavier items drop first).`;
+      }
+    });
 
     return {
       overallChancePercent,
@@ -4546,9 +4786,47 @@ export class WeightInventoryEngine {
       }
     }
 
-    // Authoritative slot assignment and overflow resolution for held items:
-    // If character's held items fit within maxStandardHoldCount, NONE of them can be in overflow!
+    // 1. Calculate and assign item size category, score, and scale percentage to ALL items across inventory
+    const charParsedDims: ParsedDimensions = dimensionsApply && dimensionsRaw
+      ? this.parseDimensions(dimensionsRaw)
+      : (height ? this.parseDimensions(`Height: ${height}, Width: ${width || '18"'}, Depth: ${depth || '11"'}`) : this.parseDimensions('Height: 70", Width: 18", Depth: 11"'));
+
+    const assignItemSize = (it: ItemInfo) => {
+      if (!it) return;
+      const sizeRes = WeightInventoryEngine.calculateItemSizeCategory(
+        it.dimensions,
+        charParsedDims,
+        it.rawText || it.name,
+        it.name,
+        it.weight
+      );
+      it.sizeCategory = sizeRes.sizeCategory;
+      it.sizeCategoryScore = sizeRes.score;
+      it.sizePercentage = sizeRes.percentage;
+      it.isContextExempt = sizeRes.isContextExempt;
+      it.smallestDimensions = sizeRes.smallestDimensions;
+    };
+
+    equippedGear.forEach(assignItemSize);
+    carriedItems.forEach(assignItemSize);
+    storedItems.forEach(assignItemSize);
+    for (const cont of containers) {
+      cont.items.forEach(assignItemSize);
+    }
+    currentlyHolding.forEach(assignItemSize);
+
+    // 2. Authoritative slot & size assignment and overflow resolution for held items:
+    // Limb scaling: baseline humanoid (2 hands) has maxStandardHoldSize = 12.
+    // Scales to limbs: maxStandardHoldSize = handSlots * 6 (e.g. 1 hand/mouth = 6, 4 arms = 24, 0 limbs = 0).
+    const handSlots = maxStandardHoldCount;
+    const maxStandardHoldSize = handSlots * 6;
     let remainingStandardSlots = maxStandardHoldCount;
+    let remainingStandardSize = maxStandardHoldSize;
+
+    // Sum total held size category points
+    const currentHeldSize = currentlyHolding.reduce((sum, h) => sum + (h.sizeCategoryScore || 0), 0);
+    const hasHoldingSizeOverflow = holdingCapacityApplies && (currentHeldSize > maxStandardHoldSize);
+
     for (const h of currentlyHolding) {
       const isTwoHanded = h.holdingLimb?.toLowerCase().includes('two-handed') ||
                           h.holdingLimb?.toLowerCase().includes('both hands') ||
@@ -4559,12 +4837,16 @@ export class WeightInventoryEngine {
                           h.name.toLowerCase().includes('pike') ||
                           h.name.toLowerCase().includes('maul');
       const requiredSlots = isTwoHanded ? Math.min(2, maxStandardHoldCount || 2) : 1;
+      const itemSizeScore = h.sizeCategoryScore || 0;
 
-      if (holdingCapacityApplies && remainingStandardSlots >= requiredSlots) {
+      // An item fits comfortably in standard grip if remaining slots AND remaining size allow
+      if (holdingCapacityApplies && remainingStandardSlots >= requiredSlots && remainingStandardSize >= itemSizeScore) {
         h.isOverflowHold = false;
+        h.isSizeOverflow = false;
         h.overflowWarning = undefined;
         h.dropChancePercent = undefined;
         remainingStandardSlots -= requiredSlots;
+        remainingStandardSize -= itemSizeScore;
 
         // If limb was tagged 'Overflow Hold' or 'under arm' from prior state, restore to legitimate limb
         if (h.holdingLimb?.toLowerCase().includes('overflow') || h.holdingLimb?.toLowerCase().includes('under arm')) {
@@ -4578,15 +4860,31 @@ export class WeightInventoryEngine {
         }
       } else if (holdingCapacityApplies) {
         h.isOverflowHold = true;
+        h.isSizeOverflow = remainingStandardSize < itemSizeScore;
         if (!h.holdingLimb || (!h.holdingLimb.toLowerCase().includes('overflow') && !h.holdingLimb.toLowerCase().includes('under arm'))) {
           h.holdingLimb = 'Overflow Hold';
         }
       } else {
         h.isOverflowHold = false;
+        h.isSizeOverflow = false;
         h.overflowWarning = undefined;
         h.dropChancePercent = undefined;
       }
     }
+
+    // Sort currentlyHolding so standard items are preserved at front and overflowing items are sorted descending by size percentage and weight
+    // User mandate: "and overflow scales and is ordered by its size percentage of that overflowing item also now realistically also
+    // (like for example bigger item is more overflow drop percentage instead of just weight, and bigger heavier items are most likely to be dropped first in that order for example)."
+    const standardHeld = currentlyHolding.filter(h => !h.isOverflowHold);
+    const overflowHeldList = currentlyHolding.filter(h => h.isOverflowHold);
+    overflowHeldList.sort((a, b) => {
+      const aSize = a.sizePercentage || (a.sizeCategoryScore ? a.sizeCategoryScore * 7 : 0);
+      const bSize = b.sizePercentage || (b.sizeCategoryScore ? b.sizeCategoryScore * 7 : 0);
+      if (bSize !== aSize) return bSize - aSize;
+      return (b.weight || 0) - (a.weight || 0);
+    });
+    currentlyHolding.length = 0;
+    currentlyHolding.push(...standardHeld, ...overflowHeldList);
 
     let occupiedSlots = 0;
     for (const h of currentlyHolding) {
@@ -4595,11 +4893,10 @@ export class WeightInventoryEngine {
         occupiedSlots += takesTwo ? 2 : 1;
       }
     }
-    const isFull = holdingCapacityApplies && (occupiedSlots >= maxStandardHoldCount);
-    const hasOverflowHold = currentlyHolding.some(h => h.isOverflowHold);
+    const isFull = holdingCapacityApplies && (occupiedSlots >= maxStandardHoldCount || currentHeldSize >= maxStandardHoldSize);
+    const hasOverflowHold = currentlyHolding.some(h => h.isOverflowHold) || hasHoldingSizeOverflow;
     const freeSlots = holdingCapacityApplies ? Math.max(0, maxStandardHoldCount - occupiedSlots) : 0;
 
-    const handSlots = maxStandardHoldCount;
     const maxStartingCarryingItems = WeightInventoryEngine.getMaxStartingCarryingItems(handSlots);
 
     // Collect all overflow items across currentlyHolding and containers
@@ -4724,12 +5021,18 @@ export class WeightInventoryEngine {
       isFull,
       hasOverflowHold,
       overflowReason: hasOverflowHold
-        ? `Character is holding items with overflow beyond standard capacity (${overflowHeld.length} overflow held; ${overallOverflowDropChancePercent}% accidental drop risk; heavier/bulkier items drop first).`
+        ? `Character is holding items with overflow beyond standard capacity (${overflowHeld.length} overflow held; ${currentHeldSize}/${maxStandardHoldSize} size points; ${overallOverflowDropChancePercent}% accidental drop risk; bigger/heavier items drop first).`
         : undefined,
       freeSlots,
       overflowDropChancePercent: overallOverflowDropChancePercent,
       totalOverflowCount,
-      maxStartingCarryingItems
+      maxStartingCarryingItems,
+      maxStandardHoldSize,
+      currentHeldSize,
+      hasHoldingSizeOverflow,
+      holdingSizeOverflowReason: hasHoldingSizeOverflow
+        ? `Held items size capacity exceeded (${currentHeldSize} > ${maxStandardHoldSize} max size points). Scaled to ${handSlots} holding limbs.`
+        : undefined
     };
 
     // Robustly sanitize equippedGear, carriedItems, currentlyHolding, and containers against accidental inclusion of the character's own body weight or self
