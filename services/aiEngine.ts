@@ -738,6 +738,7 @@ Your ONLY goal is to analyze the player's action against the "World Context" and
 
 INSTRUCTIONS:
 1. AUDIT FOR CHECKS: Identify if the action requires a probability check (Combat, Stealth, Magic Focus, Physical feats, etc.).
+   - MANDATORY CHECK TRIGGER (CRITICAL): Never skip checks on risky or contested actions! If the action involves ANY uncertainty, resistance, danger, combat, physical difficulty, athletics, acrobatics, stealth, social friction (persuasion/intimidation/deception), perception under pressure, or magical power, you MUST audit a check in "checks" (with appropriate stat, difficulty, and modifiers).
    - DYNAMIC ATTRIBUTE SCALING MANDATE (CRITICAL - STRICT SEPARATION OF PRECISION VS FORCE):
      * Precision-oriented attributes (Dexterity, Agility, Reflexes, Aim, Finesse, Coordination) NEVER directly amplify raw damage or impact potency. Apply their bonuses strictly to the 1,000-point success threshold to dictate hit confirmation, critical placement, and positional execution.
      * Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds.
@@ -752,6 +753,9 @@ INSTRUCTIONS:
 5. AUDIT FOR TEMPORAL SHIFT, SPATIAL SPLIT, & MAP PAGES: Detect if the action causes time travel, dimensional slips, or timeline returns. Specify destination time/year, anchor origin time, and whether WorldTime.txt requires temporal re-anchoring. Spatial splits & map pages: Determine whether players are together or geographically separated across different locations, levels, or timelines. Verify which map page(s) must be created, updated, or preserved to prevent data loss. List all NPCs, entities, hazards, and projectiles that must appear on the updated page(s).
 6. AUDIT FOR INVENTORY, USAGE AMOUNTS, REFILLABLE ITEMS, WEIGHT & DIMENSIONS (DYNAMIC AI REASONING):
    - Dynamically detect whether ANY item, weapon, equipment, or object is picked up, found, gathered, bought, sold, dropped, given, stored, transferred to or from a container, equipped, or unequipped.
+   - CONTAINER INTEGRITY & ZERO DUPLICATION MANDATE (CRITICAL):
+     * When an item is moved from one container to another, transferred, picked up into hands, or equipped, it MUST be removed from its prior container so it NEVER exists in multiple containers at once!
+     * Discrete items (weapons, tools, gear, unique items) can only ever exist in ONE location at a time (held in hand, equipped on body, inside one container, or stored in remote stash).
    - DYNAMIC ITEM USAGE & REFILLABLE DETECTION: Detect when an item has usage consumed, depleted, or refilled based on what happened in context (e.g., drinking from waterskin/flask, firing arrows/quiver ammo, burning oil/torches, drinking potion doses, consuming lockpicks, casting wand charges, or refilling a waterskin at a stream/well/fountain, refueling a lantern with oil, restocking ammo).
    - Accurately determine:
      * isInventoryAffected: true if any inventory/equipment/usage change occurs, false otherwise.
@@ -759,16 +763,18 @@ INSTRUCTIONS:
    - Verify container space dimensions for overflow (e.g. staff sticking out of backpack risking dropping). AUTO-EQUIP OVERSIZED WEARABLE ITEMS: If items are bigger than container capacity or would overflow, such as clothes, armor, cloaks, footwear, belts, worn jewelry, or held tools/weapons, characters must automatically equip or wear them if sensible in context to avoid overflowing containers. Calculate carried weight vs body weight threshold and max lift strength. Encumbrance effects are DYNAMIC per entity — creatures with special biologies (e.g., Slimes absorbing items without slowdown, Incorporeal ghosts, telekinetics) are NOT penalized like standard humans.
    - HELD ITEMS & MAP ATTACHMENT: Verify that any item or weapon held in hand or equipped by a character is attached to that character. Ranged weapons (rifles, bows, blasters, etc.) define their firing range, NOT their map position. Never place a held weapon far away on the map; it moves with and is attached to the holding character at their coordinates. Don't add an item as things like free hand because it should just be empty instead etc for example (never audit or treat "Free Hand" or "Empty Hand" as items; unoccupied hands are simply empty).
 7. AUDIT FOR ENERGY & STAMINA EXPENDITURE/RECOVERY (DYNAMIC CONTEXTUAL AI REASONING):
-   - Dynamically analyze the character's physical and magical exertion based on the full scene context, character capabilities, and physical/magical requirements:
-   - MENIAL & LOW-EXERTION ACTIONS: Menial, low-effort, casual, social, or everyday tasks (such as talking, speaking, conversing, standing, looking, observing, inspecting, reading, listening, waiting, idle moments, casual walking, sitting, eating, drinking, or light non-strenuous interactions) do NOT use any noticeable amount of energy or stamina.
-     * For any menial, casual, or non-strenuous action:
-       - "isEnergyAffected": MUST be false
-       - "isMenialOrNonExertive": MUST be true
-       - "expectedChange": MUST be 0
-       - "reason": Dynamically explain why no noticeable energy was expended (e.g. "Menial conversational/observational task; negligible metabolic exertion").
-       - Do NOT flag energy as affected or deduct points for menial tasks!
-   - NOTICEABLE EXERTION & SPELLS: Only evaluate "isEnergyAffected": true with negative "expectedChange" when the character engages in genuine, noticeable physical exertion (e.g. melee/ranged combat, dodging, sprinting at top speed, climbing steep cliffs, lifting heavy weights, strenuous athletics) or casting spells/channeling magical abilities that have defined resource costs.
-   - RECOVERY & REST: When resting, sleeping, or meditating, dynamically determine realistic positive energy recovery ("expectedChange" > 0, "isEnergyAffected": true).
+   - Dynamically analyze the character's physical and magical exertion based on the full scene context, character physiology, carried load, and physical/magical requirements:
+   - MENIAL & LOW-EXERTION ACTIONS: Non-strenuous or casual activities (conversing, observing, waiting, sitting, gentle non-encumbered movement) do not consume noticeable stamina/energy:
+     * "isEnergyAffected": false
+     * "isMenialOrNonExertive": true
+     * "expectedChange": 0
+     * "reason": Dynamically explain why no noticeable energy was expended based on the context.
+   - PHYSICAL & MAGICAL EXERTION: Any action requiring physical effort, combat engagement, athletic maneuvers, heavy movement, or spellcasting dynamically expends stamina/energy:
+     * Dynamically determine "expectedChange" as a realistic negative value proportionate to the character's capabilities, exertion intensity, and encumbrance.
+     * "isEnergyAffected": true
+     * "isMenialOrNonExertive": false
+     * "reason": Contextual explanation of exertion and metabolic/magical drain.
+   - RECOVERY & REST: Resting, sleeping, meditating, or nourishing the body dynamically restores energy proportionate to the duration, comfort, and restorative context ("expectedChange" > 0, "isEnergyAffected": true).
 8. AUDIT FOR RIDING, MOUNTING, VEHICLES & ENTERABLE ENTITIES (DYNAMIC AI REASONING):
    - Dynamically detect if the player or an NPC mounts, rides, boards, pilots, enters, dismounts, or exits a mount, animal, creature, vehicle, carriage, wagon, boat, mech, or rideable item (e.g., horse, skateboard, bicycle, carriage).
    - If mounting/entering:
@@ -839,6 +845,11 @@ INSTRUCTIONS:
         - intensity: effort level and context (e.g. light drill, strenuous workout, deep focus, exhaustion).
         - adaptations: list of specific modifier changes, new features, techniques, attacks, abilities, or stat adjustments that realistically result from this length of practice without using any hardcoded keywords or templates.
     - Ensure the character's file is added to "filesToUpdate"!
+13. AUDIT FOR TIME DURATION & PROGRESSION (CRITICAL - DYNAMIC REASONING):
+    - Every in-world action takes real physical time in the universe. Dynamically evaluate the realistic time required to perform this action based on its scope, complexity, distance, physical demands, and environment:
+      * Accurately determine "elapsedSeconds" as a realistic positive integer reflecting the actual physical time elapsed.
+      * Provide a clear contextual explanation in "reason".
+    - ALWAYS ensure "WorldTime.txt" is in "filesToUpdate" on every turn!
    
 OUTPUT FORMAT (Strict JSON only):
 {
@@ -939,8 +950,12 @@ OUTPUT FORMAT (Strict JSON only):
     "intensity": "Moderate drills / Strenuous conditioning / Deep focus",
     "adaptations": ["Refined accuracy modifier from +5% to +6%(1000)", "Unlocked new technique: Deflective Parry"]
   },
+  "timeAudit": {
+    "elapsedSeconds": 6,
+    "reason": "Duration of combat maneuver / action in seconds"
+  },
   "filesToCreate": ["List of filenames to immediately generate"],
-  "filesToUpdate": ["List of filenames that must be modified (Player, NPCs, etc)"],
+  "filesToUpdate": ["List of filenames that must be modified (Player, NPCs, WorldTime.txt, etc)"],
   "mapUpdateRequired": true,
   "interruptedTime": null
 }
@@ -1229,6 +1244,12 @@ ${userHeader}Player action to audit: ${action}`;
             }
           }
 
+          // Guarantee WorldTime.txt is ALWAYS in filesToUpdate so world time and ticks progress consistently
+          if (!audit.filesToUpdate) audit.filesToUpdate = [];
+          if (!audit.filesToUpdate.includes('WorldTime.txt')) {
+            audit.filesToUpdate.push('WorldTime.txt');
+          }
+
           // Also auto-include all damaged or healed NPCs / enemies in filesToUpdate
           if (audit.healthAudit?.damageAndHealing && Array.isArray(audit.healthAudit.damageAndHealing)) {
             if (!audit.filesToUpdate) audit.filesToUpdate = [];
@@ -1244,9 +1265,13 @@ ${userHeader}Player action to audit: ${action}`;
             }
           }
 
+          const actionDurationSec = audit.timeAudit?.elapsedSeconds || (audit.temporalShift?.isTimeTravel ? 0 : 5);
+          const timePlanNotice = audit.temporalShift?.isTimeTravel
+            ? `TEMPORAL DISPLACEMENT DETECTED: Jump to ${audit.temporalShift.destinationEpoch} (${audit.temporalShift.destinationTimestamp}). Anchor origin time: ${audit.temporalShift.storeAnchorTime}. Update WorldTime.txt according to schema!`
+            : `Advance WorldTime.txt by ${actionDurationSec} seconds (${audit.timeAudit?.reason || 'Standard action duration'}). You MUST advance WorldTime.txt and return it in 'files' and emit { "type": "time", "text": "+${actionDurationSec}s elapsed", "value": ${actionDurationSec} } in 'updates'.`;
+
           const executionPrompt = `Current Files Context:
 ${worldContext}
-
 ${spatialContext}
 ${playerCharacterContext}
 ${userHeader}Player action: ${action}
@@ -1257,9 +1282,9 @@ TECHNICAL PLAN (Follow strictly):
    - DYNAMIC COMBAT & MANEUVER SCALING RULE: Across all combat actions, maneuvers, and physical checks, precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold to dictate hit confirmation, critical placement, and positional execution. Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting.
 2. Create these files immediately: ${audit.filesToCreate?.join(', ') || "None"}
 3. Update these files: ${audit.filesToUpdate?.join(', ') || "None"}
-4. Temporal Shift: ${timeShiftNotice}
+4. World Time & Action Duration: ${timePlanNotice}
 5. Map Update: REQUIRED (CRITICAL). Every turn MUST update and return CurrentMap.json in the 'files' object with updated positions, facing angle, vision cones, items, landmarks, and NPCs.
-6. Energy & Stamina: ${audit.energyAudit ? (audit.energyAudit.isEnergyAffected ? `Energy affected (${audit.energyAudit.expectedChange} for ${audit.energyAudit.character || 'character'} - ${audit.energyAudit.reason || ''})` : `No energy change (0 cost) - ${audit.energyAudit.reason || 'Menial task uses no noticeable energy'}`) : "No energy change"}
+6. Energy & Stamina: ${audit.energyAudit ? (audit.energyAudit.isEnergyAffected ? `Energy affected (${audit.energyAudit.expectedChange} for ${audit.energyAudit.character || 'character'} - ${audit.energyAudit.reason || ''}). You MUST update ${playerFile || 'the character file'} with their new Energy under [STATS & MODIFIERS] and in 'updates'.` : `No energy change (0 cost) - ${audit.energyAudit.reason || 'Menial task uses no noticeable energy'}`) : "If action involves physical exertion, combat, or spells, deduct appropriate energy in character file and 'updates'."}
 7. Currency & Wealth: Dynamically evaluate if this action or its consequences result in ANY currency (e.g. Gold Coins, Silver Coins, Copper, Platinum, Credits, Dollars, Scrip, etc.) being acquired, found, looted, earned, rewarded, gifted, received, paid, spent, donated, or traded. If ANY currency is affected:
    - You MUST update ${playerFile || 'the character file'} under [CURRENCY & FINANCIAL BALANCE] and [CONTAINERS & CARRIED GEAR] (- Carried Inventory (Inside Containers)).
    - You MUST return structured "currencyTransactions": [ { "name": "...", "amount": positive number, "operation": "add"|"deduct"|"transfer", "container": "...", "recipient": "...", "giver": "..." } ].
@@ -1683,6 +1708,11 @@ CRITICAL REMINDERS:
     }
 
     // 2. Active Player Context
+    const matchedPlayerFile = this.findPlayerCharacterFile(username);
+    if (matchedPlayerFile && all[matchedPlayerFile]) {
+      relevant[matchedPlayerFile] = all[matchedPlayerFile];
+    }
+
     if (username) {
       const uLower = username.toLowerCase();
       const playerFiles = Object.keys(all).filter(f => {
@@ -1691,13 +1721,20 @@ CRITICAL REMINDERS:
       });
       for (const f of playerFiles) {
         relevant[f] = all[f];
-        // SCAN INVENTORY: Pull in technical files for items the player is carrying
-        for (const potentialItemFile of Object.keys(all)) {
-          if (relevant[potentialItemFile]) continue;
-          const base = potentialItemFile.replace('.txt', '').toLowerCase();
-          if (base.length > 2 && all[f].toLowerCase().includes(base)) {
-            relevant[potentialItemFile] = all[potentialItemFile];
-          }
+      }
+    }
+
+    // SCAN INVENTORY & POSSESSIONS: Pull in technical files for all items/gear mentioned in player files
+    const allPlayerContents = Object.keys(relevant)
+      .filter(f => f.endsWith('.txt') && !core.includes(f))
+      .map(f => relevant[f])
+      .join('\n');
+    if (allPlayerContents) {
+      for (const potentialItemFile of Object.keys(all)) {
+        if (relevant[potentialItemFile]) continue;
+        const base = potentialItemFile.replace('.txt', '').toLowerCase();
+        if (base.length > 2 && allPlayerContents.toLowerCase().includes(base)) {
+          relevant[potentialItemFile] = all[potentialItemFile];
         }
       }
     }
@@ -2122,8 +2159,8 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
 
     // Phase 2: Resolve probability checks if returned by the AI and not already resolved in narrative
     if (data.checks && Array.isArray(data.checks) && data.checks.length > 0 && (!data.narrative || data.narrative.length < 30 || data.narrative.toLowerCase().includes('roll required') || !data.narrative.includes('[Probability Check:'))) {
-      // 0. Also process any file updates from Phase 1 so they aren't lost
-      await this.processResponseData(data, username, auditContext, userPrompt);
+      // 0. Cache any provisional files from Phase 1 so they can be merged with Phase 2, avoiding double execution of side-effect mutations
+      const phase1Files = data.files ? { ...data.files } : {};
 
       const worldState = this.getWorldContextForAI(username, userPrompt);
 
@@ -2221,6 +2258,9 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
       responseText = await this.callAI(followUpPrompt, undefined, modelName);
       try {
         data = this.extractJSON(responseText);
+        if (data && phase1Files && Object.keys(phase1Files).length > 0) {
+          data.files = { ...phase1Files, ...(data.files || {}) };
+        }
         if (data && fullDetailsHtml && (!data.narrative || !data.narrative.includes('[Probability Check:'))) {
           data.narrative = `${fullDetailsHtml}\n\n${data.narrative || ''}`.trim();
         }
@@ -3725,7 +3765,41 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
             }
           }
         }
-      } else if (tx.operation === 'remove' || tx.operation === 'drop' || tx.operation === 'transfer') {
+      } else if (tx.operation === 'transfer') {
+        const lines = updatedContent.split('\n');
+        const itemNameLower = tx.name.toLowerCase();
+        let extractedLine: string | null = null;
+        const filteredLines = lines.filter(l => {
+          const lower = l.toLowerCase();
+          if (lower.includes(itemNameLower) && !extractedLine && (l.trim().startsWith('-') || l.trim().startsWith('*') || l.trim().startsWith('•'))) {
+            extractedLine = l;
+            return false;
+          }
+          return true;
+        });
+        if (filteredLines.length !== lines.length) {
+          updatedContent = filteredLines.join('\n');
+        }
+
+        const targetContainer = tx.container || (stats.containers.length > 0 ? stats.containers[0].name : 'Backpack');
+        let wStr = '1.0 lbs';
+        let dStr = '8x4x2 inches';
+        if (extractedLine) {
+          const wMatch = (extractedLine as string).match(/([0-9.]+\s*lbs?)/i);
+          const dMatch = (extractedLine as string).match(/([0-9.]+\s*x\s*[0-9.]+(?:\s*x\s*[0-9.]+)?\s*(?:in|inches|cm|m|ft)?)/i);
+          if (wMatch) wStr = wMatch[1];
+          if (dMatch) dStr = dMatch[1];
+        }
+        const transferLine = `  - ${tx.name}: ${wStr}, ${dStr}. Container: [${targetContainer}]\n`;
+        const carriedIdx = updatedContent.search(/^[-\s]*carried inventory.*:$/im);
+        if (carriedIdx >= 0) {
+          const lineEnd = updatedContent.indexOf('\n', carriedIdx);
+          const insertAt = lineEnd >= 0 ? lineEnd + 1 : updatedContent.length;
+          updatedContent = updatedContent.substring(0, insertAt) + transferLine + updatedContent.substring(insertAt);
+        } else {
+          updatedContent += `\n- Carried Inventory (Inside Containers):\n${transferLine}`;
+        }
+      } else if (tx.operation === 'remove' || tx.operation === 'drop') {
         const lines = updatedContent.split('\n');
         const itemNameLower = tx.name.toLowerCase();
         const filteredLines = lines.filter(l => {
@@ -4505,6 +4579,10 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
     if (data.narrative && typeof data.narrative === 'object') {
       data.narrative = (data.narrative as any).text || (data.narrative as any).content || (data.narrative as any).narrative || JSON.stringify(data.narrative);
     }
+    // Clean accidental repeating phrases, duplicate sentences, or loop artifacts in narrative
+    if (typeof data.narrative === 'string') {
+      data.narrative = WeightInventoryEngine.cleanDuplicateRepeatedPhrases(data.narrative);
+    }
 
     // Normalize recommendations to string array (preventing React child object errors)
     if (data.recommendations && Array.isArray(data.recommendations)) {
@@ -4825,6 +4903,22 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
           this.fs.write('WorldTime.txt', latestWorldTime, 'World Time');
           data.files['WorldTime.txt'] = latestWorldTime;
         }
+      }
+
+      // 3. Guaranteed Time Progression: If neither data.files['WorldTime.txt'] nor data.updates advanced time,
+      // automatically advance time using the audited action duration (or baseline 5s) so the world clock never stays frozen!
+      const alreadyAdvancedTime = Boolean(data.files['WorldTime.txt']) || (data.updates && Array.isArray(data.updates) && data.updates.some(u => u.type === 'time'));
+      if (!alreadyAdvancedTime && latestWorldTime) {
+        const fallbackSec = auditContext?.timeAudit?.elapsedSeconds || 5;
+        latestWorldTime = WeightInventoryEngine.advanceWorldTimestamp(latestWorldTime, fallbackSec);
+        this.fs.write('WorldTime.txt', latestWorldTime, 'World Time');
+        data.files['WorldTime.txt'] = latestWorldTime;
+        if (!data.updates || !Array.isArray(data.updates)) data.updates = [];
+        data.updates.push({
+          type: 'time',
+          text: `+${fallbackSec}s elapsed`,
+          value: fallbackSec
+        });
       }
 
       // Sort files so WorldTime.txt is processed first, character sheets & entity files next,

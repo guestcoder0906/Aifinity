@@ -285,18 +285,19 @@ export class WeightInventoryEngine {
       prevCleaned = cleaned;
       iterations++;
 
-      // Match repeated phrases >= 8 characters long that repeat 2 or more times
-      cleaned = cleaned.replace(/([A-Za-z0-9#_ \-\.]{8,}?)(?:\s*(?:\|\s*)?\1){1,}/g, (match, p1) => {
-        if (/[a-zA-Z]{3,}/.test(p1)) {
+      // Dynamically collapse identical sentences repeated consecutively
+      cleaned = cleaned.replace(/([A-Z][^.!?\n\r]{4,}[.!?])(?:\s+\1)+/g, '$1');
+
+      // Match repeated phrases >= 6 characters long that repeat 2 or more times
+      cleaned = cleaned.replace(/([A-Za-z0-9#_ \-\.]{6,}?)(?:\s*(?:\|\s*)?\1){1,}/g, (match, p1) => {
+        if (/[a-zA-Z]{2,}/.test(p1)) {
           return p1.trim();
         }
         return match;
       });
 
-      // Collapse duplicate prefix labels: "Location: Location:" -> "Location:"
-      cleaned = cleaned.replace(/(?:Location:\s*){2,}/gi, 'Location: ');
-      cleaned = cleaned.replace(/(?:Container:\s*){2,}/gi, 'Container: ');
-      cleaned = cleaned.replace(/(?:Name:\s*){2,}/gi, 'Name: ');
+      // Dynamically collapse any duplicate prefix label (e.g. "Label: Label:" -> "Label: ")
+      cleaned = cleaned.replace(/\b([A-Za-z0-9_\- ]{2,}:)\s*(?:\1\s*)+/gi, '$1 ');
     }
 
     return cleaned;
@@ -6607,8 +6608,17 @@ export class WeightInventoryEngine {
       const invLines = invBlock.split('\n');
       let invModified = false;
       const newInvLines: string[] = [];
-
       let currentContainerName = '';
+      const seenContainerItemNames = new Map<string, string>(); // canonicalName -> containerName
+
+      // Pre-extract held item names and equipped gear names
+      const heldNamesSet = new Set(
+        stats.currentlyHolding.map(h => h.name.toLowerCase().replace(/^[-*•>\s\d.]+/, '').replace(/^\[|\]$/g, '').trim()).filter(Boolean)
+      );
+      const equippedNamesSet = new Set(
+        stats.equippedGear.map(e => e.name.toLowerCase().replace(/^[-*•>\s\d.]+/, '').replace(/^\[|\]$/g, '').trim()).filter(Boolean)
+      );
+
       for (const invLine of invLines) {
         const trimmed = invLine.trim();
         if (!trimmed) {
@@ -6626,14 +6636,12 @@ export class WeightInventoryEngine {
         if (cEntries.length > 0) {
           const contMatch = invLine.match(/container[:=\s]+\[?([a-zA-Z0-9_\s'-]+)\]?/i);
           const targetContName = (contMatch ? contMatch[1].trim() : (cEntries[0].container || currentContainerName || '')).toLowerCase();
-
           // Check if any carried currency remains for this container/currency
           const matchingCarried = stats.currency.carriedCurrencies.find(cc => {
             const ccCont = (cc.container || '').toLowerCase();
             const containerMatches = !targetContName || !ccCont ||
               ccCont.includes(targetContName) ||
               targetContName.includes(ccCont);
-
             if (containerMatches) {
               const ccName = cc.name.toLowerCase();
               const entryName = cEntries[0].name.toLowerCase();
@@ -6700,11 +6708,47 @@ export class WeightInventoryEngine {
           }
         }
 
+        // Item & Container Deduplication Check:
+        // Parse non-currency item lines and verify against held items, equipped gear, and duplicate containers
+        const parsedItem = WeightInventoryEngine.parseItemLine(invLine);
+        if (parsedItem && parsedItem.name && parsedItem.category !== 'container') {
+          const itemClean = parsedItem.name.toLowerCase().replace(/^[-*•>\s\d.]+/, '').replace(/^\[|\]$/g, '').trim();
+
+          // 1. If this item is currently held in hand/appendage, remove it from container inventory!
+          const isHeld = heldNamesSet.has(itemClean) || Array.from(heldNamesSet).some(h => (h.length > 3 && itemClean.includes(h)) || (itemClean.length > 3 && h.includes(itemClean)));
+          if (isHeld) {
+            invModified = true;
+            changes.push(`Removed held item "${parsedItem.name}" from container [${parsedItem.containerName || currentContainerName || 'gear'}] because it is currently held in hand`);
+            continue;
+          }
+
+          // 2. If this item is equipped/worn as gear/armor, remove it from container inventory!
+          const isEquipped = equippedNamesSet.has(itemClean) || Array.from(equippedNamesSet).some(e => (e.length > 3 && itemClean.includes(e)) || (itemClean.length > 3 && e.includes(itemClean)));
+          if (isEquipped) {
+            invModified = true;
+            changes.push(`Removed equipped item "${parsedItem.name}" from container [${parsedItem.containerName || currentContainerName || 'gear'}] because it is actively worn/equipped`);
+            continue;
+          }
+
+          // 3. If this item is a discrete item (not a multi-count stack) and was ALREADY seen in a container, eliminate duplicate!
+          const isStackable = parsedItem.isStack || (parsedItem.stackCount && parsedItem.stackCount > 1);
+          if (!isStackable) {
+            const prevContainer = seenContainerItemNames.get(itemClean);
+            if (prevContainer) {
+              invModified = true;
+              changes.push(`Removed duplicate "${parsedItem.name}" from container [${parsedItem.containerName || currentContainerName || 'gear'}] (already stored in [${prevContainer}])`);
+              continue;
+            }
+            seenContainerItemNames.set(itemClean, parsedItem.containerName || currentContainerName || 'default');
+          }
+        }
+
         // If the line is an invalid phantom container-name line (e.g. "* (Inside Leather Bifold Wallet: 0.05 lbs (3x2 inches))" or "* (Inside Leather Bifold Wallet)")
         // that produces neither a valid item nor currency, remove it so it doesn't linger as clutter in the file!
         const isPhantomContainerLine = /^[-\s*•]*\(?(?:inside|in(?:\s*container)?|stored\s+in)\s+[a-zA-Z0-9_\s'-]+(?:\)|\])?/i.test(trimmed) &&
           !WeightInventoryEngine.parseItemLine(invLine) &&
           WeightInventoryEngine.parseCurrencyEntries(invLine).length === 0;
+
         if (isPhantomContainerLine) {
           invModified = true;
           changes.push(`Removed phantom container line "${trimmed}" from container inventory`);
