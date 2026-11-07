@@ -1,9 +1,12 @@
+import http from 'http';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import Stripe from 'stripe';
+import { WebSocketServer } from 'ws';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 
 let stripeClient: Stripe | null = null;
 
@@ -18,6 +21,25 @@ function getStripe(): Stripe | null {
   return stripeClient;
 }
 
+let cachedGenAI: GoogleGenAI | null = null;
+let cachedGenAIKey: string | null = null;
+
+function getAIClient(overrideKey?: string): GoogleGenAI {
+  const apiKey = overrideKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+  if (!cachedGenAI || cachedGenAIKey !== apiKey) {
+    cachedGenAIKey = apiKey;
+    cachedGenAI = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return cachedGenAI;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -26,7 +48,7 @@ async function startServer() {
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-gemini-api-key');
     res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -34,11 +56,252 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Health check
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Helper to execute generation with automatic retry and high-availability fallback candidates
+  async function callGeminiWithFallback(
+    ai: GoogleGenAI,
+    preferredModel: string,
+    requestContents: any,
+    config: any
+  ) {
+    const candidates: string[] = [];
+    if (preferredModel && preferredModel !== 'gemini-3.8-flash' && preferredModel !== 'gemini-3-flash-preview') {
+      candidates.push(preferredModel);
+    }
+    candidates.push('gemini-3-flash-preview');
+    candidates.push('gemini-3.8-flash');
+    candidates.push('gemini-3.1-flash-lite');
+
+    let lastError: any = null;
+
+    for (const modelCandidate of candidates) {
+      try {
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          try { timeoutController.abort(); } catch (e) {}
+        }, 12000);
+
+        const callConfig = {
+          ...config,
+          abortSignal: timeoutController.signal,
+        };
+
+        const response = await ai.models.generateContent({
+          model: modelCandidate,
+          contents: requestContents,
+          config: callConfig,
+        });
+
+        clearTimeout(timeoutId);
+        return { response, usedModel: modelCandidate };
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model candidate ${modelCandidate} failed:`, err?.status || err?.message?.substring(0, 100));
+      }
+    }
+
+    throw lastError;
+  }
+
+  // Helper to execute streaming with automatic candidate fallback
+  async function callGeminiStreamWithFallback(
+    ai: GoogleGenAI,
+    preferredModel: string,
+    requestContents: any,
+    config: any
+  ) {
+    const candidates: string[] = [];
+    if (preferredModel && preferredModel !== 'gemini-3.8-flash' && preferredModel !== 'gemini-3-flash-preview') {
+      candidates.push(preferredModel);
+    }
+    candidates.push('gemini-3-flash-preview');
+    candidates.push('gemini-3.8-flash');
+    candidates.push('gemini-3.1-flash-lite');
+
+    let lastError: any = null;
+    for (const modelCandidate of candidates) {
+      try {
+        const responseStream = await ai.models.generateContentStream({
+          model: modelCandidate,
+          contents: requestContents,
+          config,
+        });
+        return { responseStream, usedModel: modelCandidate };
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Stream candidate ${modelCandidate} failed:`, err?.status || err?.message?.substring(0, 100));
+      }
+    }
+    throw lastError;
+  }
+
+  // Gemini AI Generation Endpoint
+  app.post('/api/ai/generate', async (req, res) => {
+    try {
+      const clientKey = (req.headers['x-gemini-api-key'] as string) || req.body?.apiKey;
+      const apiKey = clientKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+
+      if (!apiKey) {
+        return res.status(200).json({
+          error: 'GEMINI_API_KEY_MISSING',
+          message: 'GEMINI_API_KEY is not configured on the server. Please set it in Settings > Secrets.',
+        });
+      }
+
+      const { prompt, contents, mapScreenshot, model, systemInstruction, responseMimeType, maxOutputTokens } = req.body;
+      const activeModel = model || 'gemini-3.8-flash';
+      const ai = getAIClient(apiKey);
+
+      let requestContents: any;
+      if (contents) {
+        requestContents = contents;
+      } else if (mapScreenshot) {
+        requestContents = [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: mapScreenshot,
+                },
+              },
+            ],
+          },
+        ];
+      } else {
+        requestContents = [
+          {
+            role: 'user',
+            parts: [{ text: prompt || '' }],
+          },
+        ];
+      }
+
+      const config: any = {
+        responseMimeType: responseMimeType || 'application/json',
+      };
+      if (systemInstruction !== undefined && systemInstruction !== null) {
+        config.systemInstruction = systemInstruction;
+      }
+      if (maxOutputTokens) {
+        config.maxOutputTokens = maxOutputTokens;
+      }
+
+      const { response, usedModel } = await callGeminiWithFallback(ai, activeModel, requestContents, config);
+
+      return res.json({
+        text: response.text || '',
+        usageMetadata: response.usageMetadata || null,
+        model: usedModel,
+      });
+    } catch (err: any) {
+      console.error('Gemini API generate error:', err);
+      let cleanMessage = err?.message || 'Gemini API call failed on server';
+      if (typeof cleanMessage === 'string' && cleanMessage.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(cleanMessage);
+          cleanMessage = parsed?.error?.message || parsed?.message || cleanMessage;
+        } catch (e) {}
+      }
+      return res.status(200).json({
+        error: 'GEMINI_API_ERROR',
+        message: cleanMessage,
+        status: err?.status || 500,
+      });
+    }
+  });
+
+  // Gemini AI Streaming Endpoint (Server-Sent Events)
+  app.post('/api/ai/stream', async (req, res) => {
+    try {
+      const clientKey = (req.headers['x-gemini-api-key'] as string) || req.body?.apiKey;
+      const apiKey = clientKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+
+      if (!apiKey) {
+        return res.status(200).json({
+          error: 'GEMINI_API_KEY_MISSING',
+          message: 'GEMINI_API_KEY is not configured on the server. Please set it in Settings > Secrets.',
+        });
+      }
+
+      const { prompt, contents, mapScreenshot, model, systemInstruction, responseMimeType } = req.body;
+      const activeModel = model || 'gemini-3.8-flash';
+      const ai = getAIClient(apiKey);
+
+      let requestContents: any;
+      if (contents) {
+        requestContents = contents;
+      } else if (mapScreenshot) {
+        requestContents = [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: mapScreenshot,
+                },
+              },
+            ],
+          },
+        ];
+      } else {
+        requestContents = [
+          {
+            role: 'user',
+            parts: [{ text: prompt || '' }],
+          },
+        ];
+      }
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const config: any = {};
+      if (responseMimeType) {
+        config.responseMimeType = responseMimeType;
+      }
+      if (systemInstruction !== undefined && systemInstruction !== null) {
+        config.systemInstruction = systemInstruction;
+      }
+
+      const { responseStream } = await callGeminiStreamWithFallback(ai, activeModel, requestContents, config);
+
+      for await (const chunk of responseStream) {
+        res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
+      }
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    } catch (err: any) {
+      console.error('Gemini API stream error:', err);
+      let cleanMessage = err?.message || 'Streaming failed on server';
+      if (typeof cleanMessage === 'string' && cleanMessage.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(cleanMessage);
+          cleanMessage = parsed?.error?.message || parsed?.message || cleanMessage;
+        } catch (e) {}
+      }
+      if (!res.headersSent) {
+        return res.status(200).json({
+          error: 'GEMINI_STREAM_ERROR',
+          message: cleanMessage,
+        });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: cleanMessage })}\n\n`);
+        return res.end();
+      }
+    }
   });
 
   // Stripe status check
@@ -1197,9 +1460,82 @@ function safeIsoDate(val: any, fallbackDate: Date = new Date()): string {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: '/api/ai/live' });
+
+  wss.on('connection', async (clientWs) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+      if (!apiKey) {
+        clientWs.send(JSON.stringify({ error: 'GEMINI_API_KEY is not configured on the server.' }));
+        clientWs.close();
+        return;
+      }
+
+      const ai = getAIClient(apiKey);
+      const session = await ai.live.connect({
+        model: 'gemini-3.8-live',
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } },
+          },
+          systemInstruction: 'You are the real-time narrator and voice assistant for the Aifinity RPG sandbox.',
+        },
+        callbacks: {
+          onmessage: (message: LiveServerMessage) => {
+            for (const part of message.serverContent?.modelTurn?.parts ?? []) {
+              if (part.inlineData?.data) {
+                clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
+              }
+            }
+            if (message.serverContent?.interrupted) {
+              clientWs.send(JSON.stringify({ interrupted: true }));
+            }
+          },
+          onerror: (err: any) => {
+            console.error('Live session error:', err);
+            clientWs.send(JSON.stringify({ error: err?.message || 'Live session error' }));
+          },
+          onclose: () => {
+            clientWs.close();
+          },
+        },
+      });
+
+      clientWs.on('message', (data) => {
+        try {
+          const parsed = JSON.parse(data.toString());
+          if (parsed.audio) {
+            session.sendRealtimeInput({
+              audio: { data: parsed.audio, mimeType: 'audio/pcm;rate=16000' },
+            });
+          } else if (parsed.text) {
+            session.sendRealtimeInput({
+              text: parsed.text,
+            });
+          }
+        } catch (e) {
+          console.error('Error handling live WebSocket message:', e);
+        }
+      });
+
+      clientWs.on('close', () => {
+        try {
+          session.close();
+        } catch (e) {}
+      });
+    } catch (err: any) {
+      console.error('Failed to establish Live API session:', err);
+      clientWs.send(JSON.stringify({ error: err?.message || 'Failed to establish Live session' }));
+      clientWs.close();
+    }
+  });
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Aifinity server running on http://0.0.0.0:${PORT}`);
   });
 }
 
 startServer();
+

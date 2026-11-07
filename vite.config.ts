@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 function spaStaticPagesPlugin() {
@@ -27,8 +27,7 @@ function spaStaticPagesPlugin() {
   };
 }
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
+export default defineConfig(() => {
     return {
       server: {
         port: 3000,
@@ -38,7 +37,7 @@ export default defineConfig(({ mode }) => {
           'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
         },
         proxy: {
-          '/__/auth': {
+          '/__': {
             target: 'https://gen-lang-client-0320558179.firebaseapp.com',
             changeOrigin: true,
             secure: true
@@ -56,7 +55,7 @@ export default defineConfig(({ mode }) => {
           'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
         },
         proxy: {
-          '/__/auth': {
+          '/__': {
             target: 'https://gen-lang-client-0320558179.firebaseapp.com',
             changeOrigin: true,
             secure: true
@@ -64,11 +63,6 @@ export default defineConfig(({ mode }) => {
         }
       },
       plugins: [react(), spaStaticPagesPlugin()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY || ''),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY || ''),
-        'process.env.VITE_GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY || '')
-      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),

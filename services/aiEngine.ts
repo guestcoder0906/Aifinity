@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { FileSystem } from "./fileSystem";
 import { AIResponse, CheckDef, UpdateItem, TimeTravelDirective, ActionUsageCost } from "../types";
 import { WeightInventoryEngine } from "./weightInventoryEngine";
@@ -502,7 +501,7 @@ FILE DETAIL RULE (CRITICAL):
   * NEVER use vague terms like "can do magic" or "has magical abilities". Every single ability must have: exact Name, Energy Cost, Range, Duration, Cooldown, Weight/Size Limits, Elemental Type, and explicit Limitations (what it CANNOT do).
 - You MUST explicitly include the physical size, dimensions, and weight for EVERY character, creature, NPC, and item in their respective files.
 - Make the files long and comprehensive.
-- IMPORTANT MINIMIZATION RULE: ONLY include files in the 'files' object if they are NEW, MODIFIED, or DELETED. If a file is completely unchanged, DO NOT include it in the response at all (it will persist automatically). NEVER use null to mean 'no change' (null means DELETE). NEVER truncate file content with ellipses (...).
+- IMPORTANT MINIMIZATION RULE: ONLY include files in the 'files' object if they are NEW, MODIFIED, or DELETED. However, you MUST ALWAYS include "CurrentMap.json" and "WorldTime.txt" whenever any spatial, positional, movement, directional, environmental, entity, item, or time change occurs in the turn (which is almost every action). Never omit "CurrentMap.json" when any character moves, runs away, turns, chases, enters/exits an area, drops/picks up an item, or when the environment/map changes in any way! NEVER use null to mean 'no change' (null means DELETE). NEVER truncate file content with ellipses (...).
 
 LOOSE REFERENCE RULE (CRITICAL):
 - Make a file for each thing even if it is only loosely referenced (e.g., a professor or a home mentioned in passing), IF the player themselves could possibly interact with it, know it, or will know it in the future/past/present.
@@ -745,10 +744,21 @@ INSTRUCTIONS:
      * STRENGTH & SUCCESS RATE AUDIT RULE (CRITICAL BUG FIX):
        - For punches, kicks, strikes, melee attacks, slashes, and weapon swings: Strength NEVER dictates accuracy or hit confirmation (success rate)! Do NOT assign Strength as the accuracy stat for a punch or strike. Instead, audit hit confirmation against Training Experience, Combat Technique, Practice, or Dexterity/Precision attributes. Strength exclusively scales damage, penetration, and knockdown thresholds upon hitting.
        - CONTEXTUAL EXCEPTION: When an action is contextually a direct contest of physical power, leverage, or restraint (such as a Grapple to keep a creature held/pinned, breaking out of a hold, shoving, bull-rushing, or lifting/forcing heavy barriers), Strength DOES legitimately determine the check's success rate.
+      * STRENGTH DAMAGE APPLICATION MANDATE (CRITICAL - BONUS OR DECREASE):
+        - For any actions, attacks, strikes, melee swings, throws, or maneuvers that use Strength or muscular/physical force: The attacker's Strength modifier / multiplier MUST apply directly to the final damage amount! High strength applies a damage amount bonus (e.g. +3 damage or scaled up by the force multiplier, with two-handed grip amplifying strength scaling further); low strength, weakness, or enfeeblement applies a damage amount decrease / penalty. Calculate and apply this modified damage amount in damageAndHealing, character file health updates, and narrative text.
    - UNARMED COMBAT AUDIT RULE: When a player or NPC strikes, kicks, grapples, tackles, bites, or attacks without weapons, audit the check using their realistic unarmed attack capabilities: For punches and strikes, audit hit confirmation against Training Experience, Technique, or Dexterity (with Strength scaling damage and knockdown upon hitting); for grapples and pins, audit against Strength/leverage to see if the hold is successfully established and maintained. Never require a weapon to audit or execute physical attacks.
    - RANDOM FIRST INTEGRITY: Do NOT generate, invent, choose, or output a roll number in "checks"! All rolls are rolled first via unbiased backend code randomness before outcome determination to prevent AI bias. You only detect the check name, reason, difficulty, stat, and modifiers.
 2. AUDIT FOR ENTITIES: List every individual NPC, group of NPCs, Weapon, Item, or Location mentioned that does NOT have a file in context.
-3. AUDIT FOR MAP: Determine if the player moved, environment changed, or new entities/landmarks/items appeared. Maps must have NOTHING missing within all players' observable and known areas, landmarks, items, npcs, structures, terrain features, etc. Always keep all observable and known elements updated correctly. Support advanced flexible shapes (oblong areas like forests via ellipse, irregular multi-point polygons, detailed architectural buildings such as market stalls and shops, paths/roads, circles, rects).
+3. AUDIT FOR MAP & SPATIAL DYNAMICS (CRITICAL - DYNAMIC CONTEXTUAL REASONING):
+   - Dynamically determine if ANYTHING map-related, spatial, positional, directional, or environmental changes in ANY way during this turn—including:
+     * A player character or NPC moving, walking, sprinting, running away / fleeing, retreating, chasing, dodging, climbing, jumping, teleporting, or repositioning.
+     * Changing facing angle or line of sight / vision cone.
+     * Entering or exiting a building, room, cave, street, forest, or transitioning into a new area/region.
+     * Items or weapons being dropped onto the ground, thrown, placed, or picked up/looted from the ground.
+     * New NPCs, creatures, mounts, vehicles, hazards, obstacles, or landmarks appearing, moving, falling unconscious, or dying.
+     * Environmental changes (doors/gates opening or breaking, fire spreading, walls collapsing, terrain shifting).
+   - Calculate and describe the expected coordinate shifts, directions, distances (based on character speed and elapsed time), facing angles, and environmental updates in "mapAudit".
+   - Maps must have NOTHING missing within all players' observable and known areas, landmarks, items, npcs, structures, terrain features, etc. Always keep all observable and known elements updated correctly. Support advanced flexible shapes (oblong areas like forests via ellipse, irregular multi-point polygons, detailed architectural buildings such as market stalls and shops, paths/roads, circles, rects).
 4. DETECT MODIFIERS: For any check identified, scan the context for mathematical modifiers (stats, items, rules, effects).
 5. AUDIT FOR TEMPORAL SHIFT, SPATIAL SPLIT, & MAP PAGES: Detect if the action causes time travel, dimensional slips, or timeline returns. Specify destination time/year, anchor origin time, and whether WorldTime.txt requires temporal re-anchoring. Spatial splits & map pages: Determine whether players are together or geographically separated across different locations, levels, or timelines. Verify which map page(s) must be created, updated, or preserved to prevent data loss. List all NPCs, entities, hazards, and projectiles that must appear on the updated page(s).
 6. AUDIT FOR INVENTORY, USAGE AMOUNTS, REFILLABLE ITEMS, WEIGHT & DIMENSIONS (DYNAMIC AI REASONING):
@@ -827,7 +837,7 @@ INSTRUCTIONS:
         - "target": exact name of the character/creature (e.g. "Kaelen", "Goblin Archer", "Bandit 1")
         - "targetFile": filename if known (e.g. "Kaelen-Bob.txt", "Bandits.txt", "Goblin.txt")
         - "type": "damage" | "heal"
-        - "amount": positive numeric points of damage or healing (calculate based on weapon/spell damage, armor thresholds, check results)
+        - "amount": positive numeric points of damage or healing (calculate based on weapon/spell damage, armor thresholds, check results; for attacks/strikes/actions using Strength, you MUST apply the attacker's Strength modifier as a damage amount bonus or decrease)
         - "damageType": "slashing" | "piercing" | "bludgeoning" | "fire" | "frost" | "poison" | "falling" | etc.
         - "source": weapon, attacker, spell, or environmental hazard
         - "bodyPart": specific body part hit (e.g. "Torso", "Left Arm", "Head", "Leg")
@@ -931,10 +941,12 @@ OUTPUT FORMAT (Strict JSON only):
   },
   "mapAudit": {
     "requiresUpdate": true,
-    "isMultiPage": true,
-    "activePages": ["Page_1_Surface", "Page_2_Underground"],
-    "entitiesToPlace": ["Player_A", "Player_B", "Bandit_1", "Bandit_2", "Chest_01"],
-    "spatialNotes": "Player_B entered dungeon; must create new page while preserving surface page for Player_A."
+    "hasSpatialOrEnvironmentChange": true,
+    "isMultiPage": false,
+    "activePages": ["Current_Page_Name"],
+    "entitiesToPlace": ["Player_A", "NPC_Name-npc"],
+    "movementSummary": "Detailed dynamic summary of all player and NPC movements (e.g. Player runs away 25m North-East from (x1, y1) to (x2, y2) facing 315°; NPC pursues or stays at (x, y)), dropped/picked-up ground items, or area transitions.",
+    "spatialNotes": "Specific spatial, coordinate, facing, scale, or environmental updates required on CurrentMap.json based on context."
   },
   "energyAudit": {
     "isEnergyAffected": false,
@@ -965,13 +977,10 @@ CRITICAL: Ignore time-based strings (+30s) in math. Magic abilities MUST require
 
 export class AIEngine {
   private fs: FileSystem;
-  private ai: GoogleGenAI;
   private lastValidMap: string | null = null;
 
   constructor(fileSystem: FileSystem) {
     this.fs = fileSystem;
-    const storedKey = typeof window !== 'undefined' ? localStorage.getItem('aimud_apikey') : null;
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || storedKey || '' });
     // Initialize the last valid map from current storage and clean any initial duplicates
     const existingMap = this.fs.read('CurrentMap.json');
     if (existingMap) {
@@ -1058,9 +1067,9 @@ export class AIEngine {
           res.usage = { ...this.lastActionUsage };
         }
         return res;
-      } catch (e) {
+      } catch (e: any) {
         console.error("Initialization failed", e);
-        return { narrative: "System initialization failed. Please check API Key." };
+        return { narrative: `System initialization encountered an error: ${e?.message || 'Please check your connection or try again.'}` };
       }
     });
   }
@@ -1244,10 +1253,13 @@ ${userHeader}Player action to audit: ${action}`;
             }
           }
 
-          // Guarantee WorldTime.txt is ALWAYS in filesToUpdate so world time and ticks progress consistently
+          // Guarantee WorldTime.txt and CurrentMap.json are ALWAYS in filesToUpdate so time and spatial state progress consistently
           if (!audit.filesToUpdate) audit.filesToUpdate = [];
           if (!audit.filesToUpdate.includes('WorldTime.txt')) {
             audit.filesToUpdate.push('WorldTime.txt');
+          }
+          if (!audit.filesToUpdate.includes('CurrentMap.json')) {
+            audit.filesToUpdate.push('CurrentMap.json');
           }
 
           // Also auto-include all damaged or healed NPCs / enemies in filesToUpdate
@@ -1270,6 +1282,17 @@ ${userHeader}Player action to audit: ${action}`;
             ? `TEMPORAL DISPLACEMENT DETECTED: Jump to ${audit.temporalShift.destinationEpoch} (${audit.temporalShift.destinationTimestamp}). Anchor origin time: ${audit.temporalShift.storeAnchorTime}. Update WorldTime.txt according to schema!`
             : `Advance WorldTime.txt by ${actionDurationSec} seconds (${audit.timeAudit?.reason || 'Standard action duration'}). You MUST advance WorldTime.txt and return it in 'files' and emit { "type": "time", "text": "+${actionDurationSec}s elapsed", "value": ${actionDurationSec} } in 'updates'.`;
 
+          const mapPlanDetails = [
+            audit.mapAudit?.movementSummary ? `Movement & Position Changes: ${audit.mapAudit.movementSummary}` : '',
+            audit.mapAudit?.spatialNotes ? `Spatial Notes: ${audit.mapAudit.spatialNotes}` : '',
+            Array.isArray(audit.mapAudit?.entitiesToPlace) && audit.mapAudit.entitiesToPlace.length > 0
+              ? `Entities to Place/Update: ${audit.mapAudit.entitiesToPlace.join(', ')}`
+              : '',
+            Array.isArray(audit.mapAudit?.activePages) && audit.mapAudit.activePages.length > 0
+              ? `Active Map Page(s): ${audit.mapAudit.activePages.join(', ')}`
+              : ''
+          ].filter(Boolean).join(' | ');
+
           const executionPrompt = `Current Files Context:
 ${worldContext}
 ${spatialContext}
@@ -1279,11 +1302,11 @@ ${userHeader}Player action: ${action}
 TECHNICAL PLAN (Follow strictly):
 1. Resolve these checks: ${resolvedCheckReport || "None"}
    (NOTE: Each check above was rolled first using unbiased backend random generation (0-1000) and evaluated objectively against thresholds. Faithfully narrate the outcome without altering rolls or results).
-   - DYNAMIC COMBAT & MANEUVER SCALING RULE: Across all combat actions, maneuvers, and physical checks, precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold to dictate hit confirmation, critical placement, and positional execution. Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting.
+   - DYNAMIC COMBAT & MANEUVER SCALING RULE: Across all combat actions, maneuvers, and physical checks, precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold to dictate hit confirmation, critical placement, and positional execution. Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting. For actions and attacks that use Strength, the attacker's Strength modifier/multiplier MUST apply to the damage amount (providing a damage amount bonus for high strength or damage decrease for low strength/weakness, amplified further by two-handed grip).
 2. Create these files immediately: ${audit.filesToCreate?.join(', ') || "None"}
 3. Update these files: ${audit.filesToUpdate?.join(', ') || "None"}
 4. World Time & Action Duration: ${timePlanNotice}
-5. Map Update: REQUIRED (CRITICAL). Every turn MUST update and return CurrentMap.json in the 'files' object with updated positions, facing angle, vision cones, items, landmarks, and NPCs.
+5. Map Update (CRITICAL - ALWAYS SYNCHRONIZE DYNAMICALLY): You MUST return an accurately updated CurrentMap.json in the 'files' object reflecting all spatial, positional, directional, entity, item, and environmental changes from this turn! ${mapPlanDetails ? `[Audited Spatial Plan: ${mapPlanDetails}]` : ''} Whenever a character moves, runs away, retreats, chases, changes facing, enters/exits an area, or interacts with the environment, dynamically update their exact (x, y) coordinates, facing angle, NPCs, ground items, and map areas/bounds based on the narrative outcome and speed!
 6. Energy & Stamina: ${audit.energyAudit ? (audit.energyAudit.isEnergyAffected ? `Energy affected (${audit.energyAudit.expectedChange} for ${audit.energyAudit.character || 'character'} - ${audit.energyAudit.reason || ''}). You MUST update ${playerFile || 'the character file'} with their new Energy under [STATS & MODIFIERS] and in 'updates'.` : `No energy change (0 cost) - ${audit.energyAudit.reason || 'Menial task uses no noticeable energy'}`) : "If action involves physical exertion, combat, or spells, deduct appropriate energy in character file and 'updates'."}
 7. Currency & Wealth: Dynamically evaluate if this action or its consequences result in ANY currency (e.g. Gold Coins, Silver Coins, Copper, Platinum, Credits, Dollars, Scrip, etc.) being acquired, found, looted, earned, rewarded, gifted, received, paid, spent, donated, or traded. If ANY currency is affected:
    - You MUST update ${playerFile || 'the character file'} under [CURRENCY & FINANCIAL BALANCE] and [CONTAINERS & CARRIED GEAR] (- Carried Inventory (Inside Containers)).
@@ -1443,14 +1466,6 @@ CRITICAL REMINDERS:
             finalResponse.checks = audit.checks;
           }
 
-          // Post-process spatial consistency (Old map state already captured via fs.read in handleRequest/enforceSpatialConsistency)
-          const latestMapRaw = this.fs.read('CurrentMap.json');
-          if (finalResponse && latestMapRaw) {
-             // Use the most recent valid map before final implementation as reference
-             const referenceMap = this.lastValidMap || latestMapRaw;
-             this.enforceSpatialConsistency(referenceMap, username);
-          }
-
           // Ensure recommendations are context-aware for the specific active player character
           if (finalResponse && (!finalResponse.recommendations || finalResponse.recommendations.length === 0)) {
             finalResponse.recommendations = this.generateFallbackRecommendations(username, playerFile, playerCharacterName);
@@ -1545,27 +1560,30 @@ CRITICAL REMINDERS:
     if (mapRaw) {
       try {
         const mapData = JSON.parse(mapRaw);
-        const players = mapData.players || [];
-        const npcs = mapData.npcs || [];
-        const areas = mapData.areas || [];
-        const myPlayer = players.find((p: any) => p.username?.toLowerCase() === uLower || p.characterName?.toLowerCase() === uLower);
-        if (myPlayer) {
-          const px = myPlayer.x ?? 0;
-          const py = myPlayer.y ?? 0;
-          for (const npc of npcs) {
-            const nx = npc.x ?? 0;
-            const ny = npc.y ?? 0;
-            const dist = Math.sqrt((nx - px) ** 2 + (ny - py) ** 2);
-            if (dist < 160 && npc.name) {
-              nearbyNpcs.push(npc.name.replace(/-npc$/i, ''));
+        const pages = Array.isArray(mapData.pages) ? mapData.pages : [mapData];
+        for (const page of pages) {
+          const players = page.players || [];
+          const npcs = page.npcs || [];
+          const areas = page.areas || [];
+          const myPlayer = players.find((p: any) => p.username?.toLowerCase() === uLower || p.characterName?.toLowerCase() === uLower);
+          if (myPlayer) {
+            const px = Number(myPlayer.x) || 0;
+            const py = Number(myPlayer.y) || 0;
+            for (const npc of npcs) {
+              const nx = Number(npc.x) || 0;
+              const ny = Number(npc.y) || 0;
+              const dist = Math.sqrt((nx - px) ** 2 + (ny - py) ** 2);
+              if (dist < 160 && npc.name) {
+                nearbyNpcs.push(npc.name.replace(/-npc$/i, ''));
+              }
             }
-          }
-          for (const area of areas) {
-            const ax = area.x ?? 0;
-            const ay = area.y ?? 0;
-            const dist = Math.sqrt((ax - px) ** 2 + (ay - py) ** 2);
-            if (dist < 130 && area.name) {
-              currentAreaName = area.name;
+            for (const area of areas) {
+              const ax = Number(area.x ?? area.cx) || 0;
+              const ay = Number(area.y ?? area.cy) || 0;
+              const dist = Math.sqrt((ax - px) ** 2 + (ay - py) ** 2);
+              if (dist < 130 && area.name) {
+                currentAreaName = area.name;
+              }
             }
           }
         }
@@ -1744,24 +1762,41 @@ CRITICAL REMINDERS:
     if (mapRaw) {
       try {
         const mapData = JSON.parse(mapRaw);
-        const players = mapData.players || [];
-        const areas = mapData.areas || [];
+        const pages = Array.isArray(mapData.pages) ? mapData.pages : [mapData];
 
-        // Find current player's location
-        const player = players.find((p: any) => p.username?.toLowerCase() === username?.toLowerCase());
-        if (player) {
-          const px = player.x, py = player.y;
-          const range = 100; // Search radius
+        for (const page of pages) {
+          const players = page.players || [];
+          const areas = page.areas || [];
+          const npcs = page.npcs || [];
+          const items = page.items || [];
+          const landmarks = page.landmarks || [];
 
-          for (const area of areas) {
-            const dist = Math.sqrt((area.x - px) ** 2 + (area.y - py) ** 2);
-            if (dist < range) {
-              const aName = area.name?.toLowerCase().replace(/\W/g, '') || '';
-              const fileMatch = Object.keys(all).find(f => {
-                const fName = f.toLowerCase().replace('.txt', '').replace(/\W/g, '');
-                return fName.includes(aName) || aName.includes(fName);
-              });
-              if (fileMatch) relevant[fileMatch] = all[fileMatch];
+          const player = players.find((p: any) =>
+            p.username?.toLowerCase() === username?.toLowerCase() ||
+            p.characterName?.toLowerCase() === username?.toLowerCase()
+          ) || players[0];
+
+          if (player) {
+            const px = Number(player.x) || 0;
+            const py = Number(player.y) || 0;
+            const range = 150;
+
+            const entitiesToScan = [...areas, ...npcs, ...items, ...landmarks];
+            for (const ent of entitiesToScan) {
+              if (!ent) continue;
+              const ex = Number(ent.x ?? ent.cx) || 0;
+              const ey = Number(ent.y ?? ent.cy) || 0;
+              const dist = Math.sqrt((ex - px) ** 2 + (ey - py) ** 2);
+              if (dist < range) {
+                const eName = (ent.name || '').toLowerCase().replace(/-npc$/i, '').replace(/\W/g, '');
+                if (eName.length >= 2) {
+                  const fileMatch = Object.keys(all).find(f => {
+                    const fName = f.toLowerCase().replace(/(?:-npc)?\.txt$/, '').replace(/\W/g, '');
+                    return fName.length >= 2 && (fName === eName || fName.includes(eName) || eName.includes(fName));
+                  });
+                  if (fileMatch) relevant[fileMatch] = all[fileMatch];
+                }
+              }
             }
           }
         }
@@ -1786,7 +1821,7 @@ CRITICAL REMINDERS:
   }
 
   /**
-   * Generates a text summary of the current map state for the AI.
+   * Generates a comprehensive text summary of the current map state for the AI.
    */
   private buildSpatialContext(username?: string): string {
     const mapRaw = this.fs.read('CurrentMap.json');
@@ -1795,21 +1830,33 @@ CRITICAL REMINDERS:
     try {
       const map = JSON.parse(mapRaw);
       const pages = map.pages || (map.areas ? [map] : []);
-      const lines: string[] = ['[SPATIAL CONTEXT]'];
+      const lines: string[] = ['[SPATIAL CONTEXT (CurrentMap.json Live Coordinates)]'];
+      const allFileNames = this.getFileNamesList();
+      const playerRegistry = buildPlayerRegistry(allFileNames, this.fs);
+      const uLower = (username || '').toLowerCase().trim();
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
         const pageLabel = page.name || `Page ${i + 1}`;
         const players = page.players || [];
         const areas = page.areas || [];
+        const landmarks = page.landmarks || [];
+        const items = page.items || [];
+        const notes = page.notes || [];
 
-        const player = players.find((p: any) => p.username?.toLowerCase() === username?.toLowerCase());
+        const player = players.find((p: any) => {
+          if (uLower && (p.username?.toLowerCase() === uLower || p.characterName?.toLowerCase() === uLower)) return true;
+          const res = resolvePlayerIdentity(p, playerRegistry);
+          return uLower && (res.canonicalKey === uLower || res.username?.toLowerCase() === uLower || res.characterName?.toLowerCase() === uLower);
+        }) || players[0];
+
         if (player) {
           const px = Number(player.x) || 0;
           const py = Number(player.y) || 0;
           const distLines: string[] = [];
 
           for (const area of areas) {
+            if (!area) continue;
             const ax = Number(area.x ?? area.cx) || 0;
             const ay = Number(area.y ?? area.cy) || 0;
             const aw = Number(area.width) || 0;
@@ -1833,15 +1880,31 @@ CRITICAL REMINDERS:
               }
             }
             const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
-            distLines.push(`  → ${area.type || 'Object'}: ${area.name} (${area.description || ''}) is ${dist.toFixed(1)}m away [at (${cx.toFixed(1)}, ${cy.toFixed(1)})]`);
+            distLines.push(`  → Area [${area.type || 'Object'}]: "${area.name}" (${area.description || area.shape || ''}) is ${dist.toFixed(1)}m away [center (${cx.toFixed(1)}, ${cy.toFixed(1)})]`);
+          }
+
+          for (const lm of landmarks) {
+            if (!lm) continue;
+            const lx = Number(lm.x) || 0;
+            const ly = Number(lm.y) || 0;
+            const dist = Math.sqrt((px - lx) ** 2 + (py - ly) ** 2);
+            distLines.push(`  → Landmark: "${lm.name}" (${lm.description || ''}) is ${dist.toFixed(1)}m away at (${lx.toFixed(1)}, ${ly.toFixed(1)})`);
+          }
+
+          for (const it of items) {
+            if (!it) continue;
+            const ix = Number(it.x) || 0;
+            const iy = Number(it.y) || 0;
+            const dist = Math.sqrt((px - ix) ** 2 + (py - iy) ** 2);
+            distLines.push(`  → Ground Item: "${it.name}" (${it.description || ''}) is ${dist.toFixed(1)}m away at (${ix.toFixed(1)}, ${iy.toFixed(1)})`);
           }
 
           for (const other of players) {
-            if (other.username?.toLowerCase() === username?.toLowerCase()) continue;
+            if (other === player) continue;
             const ox = Number(other.x) || 0;
             const oy = Number(other.y) || 0;
             const dist = Math.sqrt((px - ox) ** 2 + (py - oy) ** 2);
-            distLines.push(`  → Player ${other.username}: ${dist.toFixed(1)}m away on [${pageLabel}] at (${ox.toFixed(1)}, ${oy.toFixed(1)})`);
+            distLines.push(`  → Player "${other.characterName || other.username}" (${other.username}): ${dist.toFixed(1)}m away on [${pageLabel}] at (${ox.toFixed(1)}, ${oy.toFixed(1)}), facing ${other.facing || 0}°`);
           }
 
           const npcs = [
@@ -1858,15 +1921,20 @@ CRITICAL REMINDERS:
             if (!nName.toLowerCase().endsWith('-npc')) {
               nName = `${nName}-npc`;
             }
-            distLines.push(`  → NPC/Creature [${nName}] (${npc.type || 'npc'}): ${dist.toFixed(1)}m away on [${pageLabel}] at (${nx.toFixed(1)}, ${ny.toFixed(1)})${npc.description ? ` - ${npc.description}` : ''}`);
+            distLines.push(`  → NPC/Creature [${nName}] (${npc.type || 'npc'}): ${dist.toFixed(1)}m away on [${pageLabel}] at (${nx.toFixed(1)}, ${ny.toFixed(1)}), facing ${npc.facing ?? 0}°${npc.description ? ` - ${npc.description}` : ''}`);
           }
 
-          lines.push(`${pageLabel} at (${px.toFixed(1)}, ${py.toFixed(1)}), facing ${player.facing || 0}°:`);
-          lines.push(...distLines);
-        }
+          for (const note of notes) {
+            if (!note) continue;
+            const nx = Number(note.x) || 0;
+            const ny = Number(note.y) || 0;
+            distLines.push(`  → Map Note [${note.type || 'info'}]: "${note.text}" at (${nx.toFixed(1)}, ${ny.toFixed(1)})`);
+          }
 
-        if (page.scale) {
-          lines.push(`Map scale: ${page.scale}`);
+          lines.push(`Active Page "${pageLabel}" (Scale: ${page.scale || '100m'}) — Active Player "${player.characterName || player.username}" is at (${px.toFixed(1)}, ${py.toFixed(1)}), facing ${player.facing || 0}°:`);
+          lines.push(...distLines);
+        } else if (page.scale) {
+          lines.push(`Page "${pageLabel}" (Map scale: ${page.scale})`);
         }
       }
 
@@ -1960,192 +2028,10 @@ CRITICAL REMINDERS:
     }
   }
 
-  /**
-   * Post-processes the AI's response to enforce spatial consistency.
-   * Compares old vs new map state and corrects player positions if the AI
-   * failed to move them appropriately toward any interactive entity.
-   */
-private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
-    const newMapRaw = this.fs.read('CurrentMap.json');
-    if (!newMapRaw || !oldMapRaw) return;
-
-    try {
-      const oldMap = JSON.parse(oldMapRaw);
-      const newMap = JSON.parse(newMapRaw);
-
-      const oldPages = oldMap.pages || (oldMap.areas ? [oldMap] : []);
-      const newPages = newMap.pages || (newMap.areas ? [newMap] : []);
-
-      const interactiveTypes = new Set([
-        'npc', 'treasure', 'loot', 'item', 'weapon', 'furniture', 'vehicle', 'terminal',
-        'portal', 'tech', 'magic', 'obstacle', 'building', 'shop', 'stall', 'container'
-      ]);
-
-      let modified = false;
-
-      for (const newPage of newPages) {
-        const oldPage = oldPages.find((p: any) => 
-          (p.name && newPage.name && p.name.toLowerCase() === newPage.name.toLowerCase()) ||
-          (p.id && newPage.id && p.id === newPage.id)
-        ) || oldPages[0];
-
-        if (!newPage?.players || !oldPage?.players) continue;
-
-        const areas = newPage.areas || [];
-
-        for (const newPlayer of newPage.players) {
-          const oldPlayer = oldPage.players.find((p: any) =>
-            p.username?.toLowerCase() === newPlayer.username?.toLowerCase()
-          );
-          if (!oldPlayer) continue;
-
-          const oldX = Number(oldPlayer.x) || 0;
-          const oldY = Number(oldPlayer.y) || 0;
-          const newX = Number(newPlayer.x) || 0;
-          const newY = Number(newPlayer.y) || 0;
-
-          if (Math.abs(newX - oldX) > 0.1 || Math.abs(newY - oldY) > 0.1) continue;
-
-          let closestTarget: { cx: number; cy: number } | null = null;
-          let closestDist = Infinity;
-
-          for (const area of areas) {
-            if (!interactiveTypes.has(area.type?.toLowerCase())) continue;
-            if (area.isHeld || area.attachedTo) continue;
-
-            const ax = Number(area.x ?? area.cx) || 0;
-            const ay = Number(area.y ?? area.cy) || 0;
-            const aw = Number(area.width) || 0;
-            const ah = Number(area.height) || 0;
-            let cx = ax + aw / 2;
-            let cy = ay + ah / 2;
-            if (area.shape === 'circle' || area.shape === 'ellipse' || area.shape === 'oblong') {
-              cx = Number(area.cx ?? area.x) || ax;
-              cy = Number(area.cy ?? area.y) || ay;
-            } else if (area.shape === 'polygon' && area.points) {
-              const pts = String(area.points).split(/[\s,]+/).map(Number).filter((n: number) => !isNaN(n));
-              const numPoints = Math.floor(pts.length / 2);
-              if (numPoints >= 1) {
-                let sx = 0, sy = 0;
-                for (let j = 0; j < numPoints * 2; j += 2) {
-                  sx += pts[j];
-                  sy += pts[j + 1];
-                }
-                cx = sx / numPoints;
-                cy = sy / numPoints;
-              }
-            }
-            const dist = Math.sqrt((newX - cx) ** 2 + (newY - cy) ** 2);
-
-            if (dist < closestDist) {
-              closestDist = dist;
-              closestTarget = { cx, cy };
-            }
-          }
-
-          const interactionRange = this.getInteractionRange(newPlayer.username) || 3;
-
-          if (closestTarget && closestDist > interactionRange) {
-            const moveSpeed = this.extractPlayerSpeed(newPlayer.username) || 1.5;
-            const timeCost = this.estimateTimeCost() || 6;
-            const maxMove = moveSpeed * timeCost;
-            const moveDistance = Math.min(maxMove, Math.max(0, closestDist - (interactionRange * 0.8)));
-
-            if (moveDistance > 0.5) {
-              const ratio = moveDistance / closestDist;
-              newPlayer.x = +(oldX + (closestTarget.cx - oldX) * ratio).toFixed(1);
-              newPlayer.y = +(oldY + (closestTarget.cy - oldY) * ratio).toFixed(1);
-
-              const facingRad = Math.atan2(
-                closestTarget.cy - newPlayer.y,
-                closestTarget.cx - newPlayer.x
-              );
-              newPlayer.facing = +(facingRad * 180 / Math.PI).toFixed(0);
-              modified = true;
-            }
-          }
-        }
-      }
-
-      if (modified) {
-        const correctedJson = JSON.stringify(newMap.pages ? newMap : { pages: newPages }, null, 2);
-        this.writeMapSafe(correctedJson, username);
-      }
-    } catch (e) {
-      console.error('Spatial consistency enforcement failed', e);
-    }
-  }
-
-  /**
-   * Tries to find the current max interaction range for a player (weapon, spell, etc.)
-   */
-  private getInteractionRange(username: string): number | null {
-    if (!username) return null;
-    const files = this.fs.getAll();
-    const uLower = username.toLowerCase();
-
-    for (const [name, content] of Object.entries(files)) {
-      if (!name.toLowerCase().includes(uLower)) continue;
-
-      // Look for range patterns in the character file or equipped items
-      const rangeMatch = content.match(/(?:range|reach|distance)[:\s]*(\d+\.?\d*)\s*m/i);
-      if (rangeMatch) return parseFloat(rangeMatch[1]);
-
-      // Fallback for melee weapon detection
-      if (content.toLowerCase().includes('sword') || content.toLowerCase().includes('axe') || content.toLowerCase().includes('club')) {
-        return 2;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Extracts a player's movement speed from their character file.
-   * Handles varied formats: "Walking: 1.5m/s", "Speed 5 ft/s", "Movement Speed: 3 meters per second", etc.
-   * Returns speed in m/s, or null if not found.
-   */
-  private extractPlayerSpeed(username: string): number | null {
-    if (!username) return null;
-    const files = this.fs.getAll();
-    const uLower = username.toLowerCase();
-
-    for (const [name, content] of Object.entries(files)) {
-      if (!name.toLowerCase().includes(uLower)) continue;
-
-      // Try multiple patterns from most specific to least
-      const patterns = [
-        /(?:walk(?:ing)?|run(?:ning)?|move(?:ment)?|speed|sprint(?:ing)?|base\s*speed)[:\s]*(\d+\.?\d*)\s*m(?:eters?)?\s*(?:\/|per\s*)s(?:ec(?:ond)?)?/i,
-        /(\d+\.?\d*)\s*m\/s/i,
-        /(\d+\.?\d*)\s*(?:ft|feet)\s*(?:\/|per\s*)s(?:ec)?/i,  // ft/s → convert
-        /(\d+\.?\d*)\s*(?:km|kph|km\/h)/i,  // km/h → convert
-        /(?:speed|movement)[:\s]*(\d+\.?\d*)/i, // bare number fallback
-      ];
-
-      for (let i = 0; i < patterns.length; i++) {
-        const match = content.match(patterns[i]);
-        if (match) {
-          let speed = parseFloat(match[1]);
-          // Convert units to m/s
-          if (i === 2) speed *= 0.3048;    // ft/s → m/s
-          if (i === 3) speed /= 3.6;       // km/h → m/s
-          if (speed > 0 && speed < 100) return speed; // sanity check
-        }
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Estimates the time cost of the last action by checking the most recent
-   * update entry or WorldTime changes. Returns seconds, or null if unknown.
-   */
-  private estimateTimeCost(): number | null {
-    // Check the WorldTime.txt for any time-related info
-    // This is a best-effort estimation — return null to use defaults
-    return null;
-  }
-
   private async handleRequest(userPrompt: string, mapScreenshot?: string, username?: string, modelName?: string, auditContext?: any): Promise<AIResponse | null> {
+    // Capture the map state BEFORE this turn's response is processed so we can accurately detect if the AI omitted or failed to update CurrentMap.json
+    const previousMapBeforeTurn = this.lastValidMap || this.fs.read('CurrentMap.json');
+
     // Phase 1: Analyze/Execute
     let responseText = await this.callAI(userPrompt, mapScreenshot, modelName);
     let data: AIResponse;
@@ -2171,7 +2057,6 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
         const difficulty = check.difficulty || 'moderate';
 
         // 1. DYNAMICALLY DETECT MODIFIERS USING AI
-        // The AI analyzes the raw context and identifies structured modifier rules.
         const detectedMods = await this.detectRelevantModifiers(safeDesc, worldState, username);
 
         // 2. CALCULATE BONUS FROM DETECTED MODS (System Math)
@@ -2197,7 +2082,6 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
         if (check.thresholds && typeof check.thresholds === 'object') {
           safeThresholds = { ...check.thresholds };
         } else if (typeof check.threshold === 'number') {
-          // Convert flat threshold to proper thresholds object
           const base = check.threshold;
           const adjusted = Math.max(0, Math.min(1000, base));
           safeThresholds = {
@@ -2206,12 +2090,9 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
             "Partial Success": Math.max(0, adjusted - 200)
           };
         } else {
-          // No thresholds from the AI at all — use difficulty-based defaults
           safeThresholds = this.getDefaultThresholds(difficulty);
         }
 
-        // Apply total computer bonus to lower the thresholds
-        // (A bonus reduces the required roll)
         if (totalBonus !== 0) {
           const shifted: { [key: string]: number } = {};
           for (const [key, val] of Object.entries(safeThresholds)) {
@@ -2220,10 +2101,8 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
           safeThresholds = shifted;
         }
 
-        // Enforce realistic failure ranges based on difficulty
         safeThresholds = this.enforceRealisticThresholds(safeThresholds, difficulty);
 
-        // True random roll generated first on backend to eliminate AI model bias or guessing
         const roll = this.generateRandomRoll();
         const outcome = this.determineOutcome(roll, safeThresholds, difficulty);
         return {
@@ -2246,16 +2125,17 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
       ).join(' ');
 
       const followUpPrompt = `PREVIOUS CONTEXT: ${userPrompt}\n\n[SYSTEM: Probability Engine Results]\n\n${resultReport}\n\nBased on these FAIR and FINAL results, generate the highly detailed narrative and extensive file updates. Calculate exact dynamic outcomes (e.g., damage = base * probability result) WITHOUT using dice notation. 
-      DYNAMIC COMBAT SCALING MANDATE (CRITICAL): Precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold (dictating hit confirmation, critical placement, and positional execution). Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting.
+      DYNAMIC COMBAT SCALING MANDATE (CRITICAL): Precision-oriented attributes (Dexterity, Agility, Reflexes, Aim) NEVER directly amplify raw damage or impact potency; apply their bonuses strictly to the 1,000-point success threshold (dictating hit confirmation, critical placement, and positional execution). Force-oriented attributes (Strength, Pneumatic/Hydraulic Power, Kinetic Force, Mass/Brawn) exclusively scale base damage, penetration values, and physical knockdown thresholds. Strength NEVER applies to hit accuracy for punches, strikes, or weapon attacks (which scale with training experience, technique, and precision)—UNLESS contextually a direct contest of physical power or restraint like grappling (keeping a creature grappled) or lifting. For actions and attacks that use Strength, the attacker's Strength modifier/multiplier MUST apply to the damage amount (providing a damage amount bonus for high strength or damage decrease for low strength/weakness, amplified further by two-handed grip).
       CRITICAL: You MUST include the exact text "${fullDetailsHtml}" at the very beginning or end of your narrative so the player can click to see the full mathematical details. Do not alter the formatting of that string. Include the Check Name and Result (e.g. "[Jump: Failure]") natively in the narrative text as well.
+      DYNAMIC MAP & SPATIAL UPDATE MANDATE (CRITICAL - NEVER OMIT):
+      - You MUST update and return "CurrentMap.json" in your "files" object reflecting the exact spatial/positional/environmental outcome of these resolved checks!
+      - If the player or any NPC moved, ran away, fled, chased, dodged, climbed, fell, changed facing, dropped/picked up an item, or transitioned areas based on the check result, update their exact (x, y) coordinates, facing angle, NPCs, items, and areas in "CurrentMap.json".
       DYNAMIC STAT & HEALTH UPDATES (WHEN APPLICABLE):
       - If this action results in damage, injury, or healing, dynamically update the affected character/entity file(s) in 'files' with their new Health calculated in [STATS & MODIFIERS] and include the stat change in the 'updates' array.
       - If this action genuinely consumes stamina, mana, or energy (from noticeable physical exertion, combat, or spellcasting), or restores energy (from resting/sleeping), dynamically update the character's file with their new Energy/Mana/Stamina value in [STATS & MODIFIERS] and include the stat change in the 'updates' array. Do NOT deduct energy for menial, low-effort tasks like talking, standing, observing, or casual interactions.
       - If this action involves training, practice, conditioning, studying, or repetitive skill development over a duration, dynamically evaluate the length and effort: proportionately adjust or add modifiers, attacks, or abilities in the character's file under [STATS & MODIFIERS], [ATTACKS & COMBAT ACTIONS], or [ABILITIES & MAGIC], emit an update in 'updates', and narrate the gradual mastery authentically without hardcoded keywords.`;
 
-      // We make a fresh call with the context combined, as we don't maintain a full chat history object here 
-      // (The FS is the history source of truth).
-      responseText = await this.callAI(followUpPrompt, undefined, modelName);
+      responseText = await this.callAI(followUpPrompt, mapScreenshot, modelName);
       try {
         data = this.extractJSON(responseText);
         if (data && phase1Files && Object.keys(phase1Files).length > 0) {
@@ -2270,7 +2150,7 @@ private enforceSpatialConsistency(oldMapRaw: string, username?: string) {
       }
     }
 
-    await this.processResponseData(data, username, auditContext, userPrompt);
+    await this.processResponseData(data, username, auditContext, userPrompt, previousMapBeforeTurn);
     if (this.lastActionUsage) {
       data.usage = { ...this.lastActionUsage };
     }
@@ -4572,7 +4452,7 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
     }
   }
 
-  private async processResponseData(data: AIResponse, username?: string, auditContext?: any, playerAction?: string) {
+  private async processResponseData(data: AIResponse, username?: string, auditContext?: any, playerAction?: string, previousMapBeforeTurn?: string | null) {
     if (!data) return;
 
     // Normalize narrative to string if provided as object
@@ -4674,6 +4554,10 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
 
     // Dynamically repair any accidentally corrupted player files
     cleanAndRepairPlayerFiles(this.fs);
+
+    if (!data.files || typeof data.files !== 'object' || Array.isArray(data.files)) {
+      data.files = {};
+    }
 
     // Dynamically reconcile and deduplicate NPC files to prevent accidental cloning
     reconcileNpcFiles(this.fs, data.files);
@@ -4832,44 +4716,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         }
       }
 
-      // ==================== ENHANCED MAP MERGE GUARD ====================
-      // If AI omitted CurrentMap.json this turn, auto-refresh and synchronize map so it never stays stale or fails to update!
-      if (!data.files['CurrentMap.json']) {
-        const existingMap = this.lastValidMap || this.fs.read('CurrentMap.json');
-        if (existingMap) {
-          try {
-            const rawExisting = typeof existingMap === 'string' ? JSON.parse(existingMap) : existingMap;
-            const mergedMap = this.mergeAndNormalizeMap(rawExisting, typeof existingMap === 'string' ? existingMap : JSON.stringify(existingMap), username);
-            const mergedJson = JSON.stringify(mergedMap, null, 2);
-            data.files['CurrentMap.json'] = mergedJson;
-            this.lastValidMap = mergedJson;
-            this.fs.write('CurrentMap.json', mergedJson);
-          } catch (e) {
-            console.error("Auto map sync failed", e);
-          }
-        }
-      }
-
-      if (data.files['CurrentMap.json']) {
-        try {
-          const rawIncoming = (data.files['CurrentMap.json'] as any)?.content ?? data.files['CurrentMap.json'];
-          const incomingStr = typeof rawIncoming === 'object' ? JSON.stringify(rawIncoming) : String(rawIncoming);
-          const incomingParsed = JSON.parse(incomingStr);
-          const mergedMap = this.mergeAndNormalizeMap(incomingParsed, this.lastValidMap || this.fs.read('CurrentMap.json'), username);
-          const mergedJson = JSON.stringify(mergedMap, null, 2);
-
-          if (typeof data.files['CurrentMap.json'] === 'object' && (data.files['CurrentMap.json'] as any).content !== undefined) {
-            (data.files['CurrentMap.json'] as any).content = mergedJson;
-          } else {
-            data.files['CurrentMap.json'] = mergedJson;
-          }
-          this.lastValidMap = mergedJson;
-          this.fs.write('CurrentMap.json', mergedJson);
-        } catch (e) {
-          console.error("Map merge guard failed", e);
-        }
-      }
-      
       // ==================== ADVANCE & SYNCHRONIZE WORLD TIME FIRST ====================
       let latestWorldTime = this.fs.read('WorldTime.txt') || undefined;
 
@@ -4921,17 +4767,18 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         });
       }
 
-      // Sort files so WorldTime.txt is processed first, character sheets & entity files next,
-      // and CurrentMap.json is processed strictly LAST so all character inventories & attachments are fully up to date!
-      const sortedFileEntries = Object.entries(data.files).sort(([a], [b]) => {
-        if (a === 'WorldTime.txt') return -1;
-        if (b === 'WorldTime.txt') return 1;
-        if (a === 'CurrentMap.json') return 1;
-        if (b === 'CurrentMap.json') return -1;
-        return 0;
-      });
-      
-      for (const [filename, fileData] of sortedFileEntries) {
+      // ==================== PROCESS ALL NON-MAP FILES FIRST ====================
+      // Write character sheets, NPC files, item files, WorldRules, and Guide BEFORE processing CurrentMap.json
+      // so that CurrentMap.json normalization has 100% up-to-date character inventories, speeds, and states!
+      const nonMapEntries = Object.entries(data.files)
+        .filter(([filename]) => filename !== 'CurrentMap.json')
+        .sort(([a], [b]) => {
+          if (a === 'WorldTime.txt') return -1;
+          if (b === 'WorldTime.txt') return 1;
+          return 0;
+        });
+
+      for (const [filename, fileData] of nonMapEntries) {
         if (fileData === null || (typeof fileData === 'object' && fileData.content === null)) {
           this.fs.delete(filename);
         } else {
@@ -4955,7 +4802,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
           if (typeof contentStr === 'string' && filename.endsWith('.txt') && (contentStr.includes('[NAME & DESCRIPTION]') || contentStr.includes('[STATS & MODIFIERS]') || contentStr.includes('[CONTAINERS') || contentStr.includes('[INVENTORY') || contentStr.includes('[STATUS EFFECTS'))) {
             try {
               const existingCharacterFile = existingFile;
-              // If this is a newly created character file, enforce starting inventory carrying limit (<= 2x hand slots)
               if (!existingCharacterFile) {
                 const limitEnforcement = WeightInventoryEngine.enforceStartingInventoryLimit(contentStr);
                 if (limitEnforcement.modified) {
@@ -4975,7 +4821,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
               contentStr = syncResult.updatedContent;
 
               if (data.updates && Array.isArray(data.updates)) {
-                // Report status effect expirations, transitions, and transformation appearances
                 for (const chg of syncResult.changes) {
                   const chgLower = chg.toLowerCase();
                   if (chgLower.includes('expired') || chgLower.includes('transitioned') || chgLower.includes('appearance') || chgLower.includes('reverted body weight')) {
@@ -5002,7 +4847,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
                   }
                 }
 
-                // Report overall overflow accidental drop chance
                 if (stats.totalOverflowCount > 0) {
                   const hasOverallOverflowUpdate = data.updates.some(u => u.text && u.text.toLowerCase().includes('accidental drop risk'));
                   if (!hasOverallOverflowUpdate) {
@@ -5014,7 +4858,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
                   }
                 }
 
-                // Individual container overflow items with weight-scaled drop risk
                 for (const cont of stats.containers) {
                   if (cont.hasOverflow) {
                     for (const item of cont.items) {
@@ -5033,7 +4876,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
                   }
                 }
 
-                // Individual held overflow items
                 for (const held of stats.currentlyHolding) {
                   if (held.isOverflowHold) {
                     const hasHeldOverflowUpdate = data.updates.some(u => u.text && u.text.includes(held.name) && u.text.includes('overflow hold'));
@@ -5055,14 +4897,206 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
 
           const existing = this.fs.read(filename);
           if (existing === contentStr) continue;
-          if (filename === 'CurrentMap.json') {
-            this.writeMapSafe(contentStr, username);
-          } else {
-            this.fs.write(filename, contentStr, displayName);
+          this.fs.write(filename, contentStr, displayName);
+        }
+      }
+
+      // ==================== DYNAMIC AI MAP SYNCHRONIZATION & FINAL MAP WRITE ====================
+      const referenceMapStr = previousMapBeforeTurn || this.lastValidMap || this.fs.read('CurrentMap.json');
+      const incomingMapRaw = (data.files['CurrentMap.json'] as any)?.content ?? data.files['CurrentMap.json'];
+      const mapWasOmitted = !incomingMapRaw;
+      const mapUnchangedFromBefore = !mapWasOmitted && referenceMapStr
+        ? !this.hasMapChanged(referenceMapStr, incomingMapRaw)
+        : false;
+
+      // If the main AI pass omitted CurrentMap.json OR returned an identical stale map during an action turn,
+      // dynamically evaluate and update CurrentMap.json based on the action, narrative outcome, and world context!
+      if ((mapWasOmitted || mapUnchangedFromBefore) && referenceMapStr && data.narrative && (auditContext || playerAction)) {
+        try {
+          const dynamicallyUpdatedMap = await this.syncMapDynamicallyWithAI(
+            referenceMapStr,
+            auditContext?.action || playerAction || '',
+            data,
+            username,
+            auditContext
+          );
+          if (dynamicallyUpdatedMap) {
+            data.files['CurrentMap.json'] = dynamicallyUpdatedMap;
           }
+        } catch (mapSyncErr) {
+          console.warn("Dynamic AI map synchronization fallback error:", mapSyncErr);
+        }
+      }
+
+      const finalMapCandidate = (data.files['CurrentMap.json'] as any)?.content ?? data.files['CurrentMap.json'] ?? referenceMapStr;
+      if (finalMapCandidate) {
+        this.writeMapSafe(finalMapCandidate, username);
+        if (this.lastValidMap) {
+          data.files['CurrentMap.json'] = this.lastValidMap;
         }
       }
     }
+  }
+
+  /**
+   * Compares two map states (before vs after turn) to detect whether any spatial, positional,
+   * directional, entity, item, landmark, or area property actually changed.
+   */
+  private hasMapChanged(oldMapRaw: string | null, newMapCandidate: any): boolean {
+    if (!oldMapRaw || !newMapCandidate) return false;
+    try {
+      const oldParsed = typeof oldMapRaw === 'string' ? JSON.parse(oldMapRaw) : oldMapRaw;
+      const newParsed = typeof newMapCandidate === 'string' ? JSON.parse(newMapCandidate) : newMapCandidate;
+      const oldNorm = this.normalizeMapStructure(oldParsed);
+      const newNorm = this.normalizeMapStructure(newParsed);
+
+      if (oldNorm.pages.length !== newNorm.pages.length) return true;
+
+      for (let i = 0; i < oldNorm.pages.length; i++) {
+        const op = oldNorm.pages[i];
+        const np = newNorm.pages[i];
+        if ((op.name || '') !== (np.name || '') || (op.scale || '') !== (np.scale || '')) return true;
+
+        const oPlayers = Array.isArray(op.players) ? op.players : [];
+        const nPlayers = Array.isArray(np.players) ? np.players : [];
+        if (oPlayers.length !== nPlayers.length) return true;
+        for (let j = 0; j < nPlayers.length; j++) {
+          const npl = nPlayers[j];
+          const opl = oPlayers.find((p: any) =>
+            (p.username && npl.username && p.username.toLowerCase() === npl.username.toLowerCase()) ||
+            (p.characterName && npl.characterName && p.characterName.toLowerCase() === npl.characterName.toLowerCase())
+          ) || oPlayers[j];
+          if (!opl) return true;
+          if (
+            Math.abs((Number(opl.x) || 0) - (Number(npl.x) || 0)) > 0.05 ||
+            Math.abs((Number(opl.y) || 0) - (Number(npl.y) || 0)) > 0.05 ||
+            Math.abs((Number(opl.facing) || 0) - (Number(npl.facing) || 0)) > 1
+          ) {
+            return true;
+          }
+        }
+
+        const oNpcs = Array.isArray(op.npcs) ? op.npcs : [];
+        const nNpcs = Array.isArray(np.npcs) ? np.npcs : [];
+        if (oNpcs.length !== nNpcs.length) return true;
+        for (let j = 0; j < nNpcs.length; j++) {
+          const nn = nNpcs[j];
+          const nnClean = String(nn.name || '').toLowerCase().replace(/-npc$/i, '');
+          const on = oNpcs.find((n: any) => String(n.name || '').toLowerCase().replace(/-npc$/i, '') === nnClean) || oNpcs[j];
+          if (!on) return true;
+          if (
+            String(on.name || '').toLowerCase().replace(/-npc$/i, '') !== nnClean ||
+            Math.abs((Number(on.x) || 0) - (Number(nn.x) || 0)) > 0.05 ||
+            Math.abs((Number(on.y) || 0) - (Number(nn.y) || 0)) > 0.05 ||
+            Math.abs((Number(on.facing) || 0) - (Number(nn.facing) || 0)) > 1
+          ) {
+            return true;
+          }
+        }
+
+        const oItems = Array.isArray(op.items) ? op.items : [];
+        const nItems = Array.isArray(np.items) ? np.items : [];
+        if (oItems.length !== nItems.length) return true;
+        if (JSON.stringify(oItems) !== JSON.stringify(nItems)) return true;
+
+        const oAreas = Array.isArray(op.areas) ? op.areas : [];
+        const nAreas = Array.isArray(np.areas) ? np.areas : [];
+        if (oAreas.length !== nAreas.length) return true;
+        if (JSON.stringify(oAreas) !== JSON.stringify(nAreas)) return true;
+
+        const oLandmarks = Array.isArray(op.landmarks) ? op.landmarks : [];
+        const nLandmarks = Array.isArray(np.landmarks) ? np.landmarks : [];
+        if (oLandmarks.length !== nLandmarks.length) return true;
+        if (JSON.stringify(oLandmarks) !== JSON.stringify(nLandmarks)) return true;
+
+        const oNotes = Array.isArray(op.notes) ? op.notes : [];
+        const nNotes = Array.isArray(np.notes) ? np.notes : [];
+        if (oNotes.length !== nNotes.length) return true;
+        if (JSON.stringify(oNotes) !== JSON.stringify(nNotes)) return true;
+      }
+
+      return false;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  /**
+   * Dynamically evaluates and updates CurrentMap.json using AI contextual reasoning whenever
+   * the primary execution pass omitted CurrentMap.json or returned a stale map despite narrative/context changes.
+   * Zero hardcoded keywords — relies purely on full contextual understanding of the action and narrative outcome.
+   */
+  private async syncMapDynamicallyWithAI(
+    currentMapStr: string,
+    actionText: string,
+    data: AIResponse,
+    username?: string,
+    auditContext?: any
+  ): Promise<any | null> {
+    const playerFile = this.findPlayerCharacterFile(username);
+    const playerSheet = playerFile ? (this.fs.read(playerFile) || '') : '';
+    const worldTime = this.fs.read('WorldTime.txt') || '';
+    const spatialSummary = this.buildSpatialContext(username);
+
+    const mapSyncPrompt = `You are the Dynamic Spatial & Map Synchronization Engine.
+Your sole responsibility is to inspect the previous CurrentMap.json, the player's action, the audited spatial context, and the resulting narrative of this turn, and determine if ANYTHING map-related changed in any way.
+
+[PREVIOUS CurrentMap.json]
+${currentMapStr}
+
+[SPATIAL SUMMARY BEFORE UPDATE]
+${spatialSummary}
+
+[ACTIVE CHARACTER FILE (${playerFile || username || 'Player'})]
+${playerSheet.slice(0, 2500)}
+
+[WORLD TIME]
+${worldTime}
+
+[PLAYER ACTION]
+${actionText.slice(0, 1500)}
+
+[AUDITED MAP & SPATIAL CONTEXT]
+${JSON.stringify(auditContext?.mapAudit || {}, null, 2)}
+
+[TURN NARRATIVE OUTCOME]
+${String(data.narrative || '').slice(0, 4000)}
+
+[TURN UPDATES]
+${JSON.stringify(data.updates || [])}
+
+DYNAMIC SPATIAL EVALUATION INSTRUCTIONS (NO HARDCODED RULES - PURE CONTEXTUAL REASONING):
+1. Carefully read the [PLAYER ACTION] and [TURN NARRATIVE OUTCOME]. Did ANYTHING map-related, spatial, positional, directional, or environmental change in ANY way during this turn?
+   Examples of map-related changes (evaluate dynamically from context):
+   - Any character or player moving, running away, fleeing, retreating, sprinting, walking, approaching, dodging, climbing, jumping, swimming, riding, or repositioning to a new spot.
+   - Any character or NPC changing their facing direction (0°=East, 90°=South, 180°=West, 270°=North) to look at, aim at, or flee from something.
+   - Any NPC or creature moving, chasing/pursuing, fleeing, arriving, patrolling, falling unconscious, or dying (if dead, rename to "[Name]-dead").
+   - A character running away or traveling into a new area, street, forest, room, building, or beyond the current area's immediate spot (update their (x, y) coordinates realistically based on their speed, direction, and time elapsed, and if they entered a new area or expanded the scene, add/update the relevant areas, landmarks, NPCs, or page name/scale accordingly!).
+   - Any item or weapon being dropped onto the ground (add to "items"), thrown, or picked up/looted from the ground (remove from "items").
+   - Any environmental change (doors opening/breaking, hazards like fire/gas appearing or clearing, obstacles shifting, new landmarks/structures revealed).
+2. If ANYTHING map-related changed in any way:
+   - Set "mapChanged": true.
+   - Return the complete, valid, updated "CurrentMap" object (with the full "pages" array) reflecting all accurate new (x, y) coordinates, facing angles, vision cones, players, npcs (with "-npc" suffix), areas, landmarks, items, and notes.
+   - Ensure the player's or NPC's new (x, y) coordinates actually change to reflect their movement (for example, if they ran away from an enemy or building, move their (x, y) coordinates away in that direction by a realistic distance in meters matching the narrative, and update their facing angle to match their movement/looking direction!).
+   - Preserve all existing observable areas, buildings, landmarks, and NPCs that are still in the scene so nothing disappears unless the character left the region entirely.
+3. ONLY if genuinely NOTHING spatial, positional, directional, entity-related, or environmental changed at all (for example, a purely internal mental thought with zero movement, zero facing change, and zero NPC/environment change):
+   - Set "mapChanged": false and "CurrentMap": null.
+
+Return STRICT JSON ONLY in this exact format:
+{
+  "mapChanged": true,
+  "reasoning": "Brief explanation of what spatial/positional/environmental changes occurred in the narrative",
+  "CurrentMap": {
+    "pages": [ ... ]
+  }
+}`;
+
+    const rawResp = await this.callAI(mapSyncPrompt, undefined, 'gemini-3.8-flash');
+    const parsed = this.extractJSON(rawResp);
+    if (parsed && parsed.mapChanged && (parsed.CurrentMap || parsed.pages)) {
+      return parsed.CurrentMap || { pages: parsed.pages };
+    }
+    return null;
   }
 
   /**
@@ -5227,7 +5261,7 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
       }
     }
 
-    // Gather all possessions of registered players and known item files to avoid normalizing items as NPCs or loose ground entities
+    // Gather all possessions of registered players and character sheets to avoid normalizing held/equipped items as NPCs or loose ground items
     const knownPossessions = new Set<string>();
     const registerPossession = (str: string) => {
       if (!str) return;
@@ -5235,9 +5269,9 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
       if (!lower || lower.length < 2) return;
       knownPossessions.add(lower);
       const unspaced = lower.replace(/[\s_-]+/g, '');
-      if (unspaced.length >= 2) knownPossessions.add(unspaced);
+      if (unspaced.length >= 3) knownPossessions.add(unspaced);
       const pascal = str.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
-      if (pascal !== lower && pascal.length >= 2) knownPossessions.add(pascal);
+      if (pascal !== lower && pascal.length >= 3) knownPossessions.add(pascal);
     };
 
     if (playerRegistry) {
@@ -5253,19 +5287,6 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         const c = this.fs.read(f);
         if (c) {
           extractAllPossessionsFromCharacterSheet(c).forEach(p => registerPossession(p));
-          // If the file represents an item, vehicle, or equipment attached to someone
-          if (
-            /category\s*[:=]\s*(?:item|equipment|gear|weapon|vehicle|mount|container|armor|tool|transport)/i.test(c) ||
-            /(?:attached|equipped|hitched|towed|held|carried|riding)\s*(?:to|by)?\s*[:=]/i.test(c) ||
-            /\[(?:IDENTIFICATION|TECHNICAL RULES|SPECIAL PROPERTIES|CONDITION & ACTIVE EFFECTS)\]/i.test(c)
-          ) {
-            const base = f.replace(/\.txt$/, '');
-            registerPossession(base);
-            const nameMatch = c.match(/[-*•]?\s*Name\s*[:=]\s*([^\n\r]+)/i);
-            if (nameMatch && nameMatch[1]) {
-              registerPossession(nameMatch[1].replace(/\[[^\]]+\]/g, ''));
-            }
-          }
         }
       }
     }
@@ -5276,11 +5297,11 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
       if (!clean) return false;
       if (knownPossessions.has(clean)) return true;
       const unspaced = clean.replace(/[\s_-]+/g, '');
-      if (knownPossessions.has(unspaced)) return true;
+      if (unspaced.length >= 3 && knownPossessions.has(unspaced)) return true;
       const pascal = name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/[-_]npc$/i, '').trim();
       if (knownPossessions.has(pascal)) return true;
       for (const p of knownPossessions) {
-        if (clean === p || clean.includes(p) || p.includes(clean) || areItemNamesEquivalent(clean, p) || areItemNamesEquivalent(pascal, p)) return true;
+        if (clean === p || areItemNamesEquivalent(clean, p) || areItemNamesEquivalent(pascal, p)) return true;
       }
       return false;
     };
@@ -5298,24 +5319,25 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         return !clean || clean === 'free hand' || clean === 'empty hand' || clean === 'bare hand' || clean === 'open hand';
       };
 
-      // Purge any loose ground items or landmarks that match a player's possession, free hand tags, or are attached
+      // Purge any loose ground items that match a player's on-person possession, free hand tags, or are attached
       page.items = page.items.filter((it: any) => it && it.name && !isFreeHandTag(it.name) && !isPossessionMatch(it.name) && !it.attachedTo && !it.isHeld && (!it.holder || it.holder === 'ground'));
-      page.landmarks = page.landmarks.filter((lm: any) => lm && lm.name && !isFreeHandTag(lm.name) && !isPossessionMatch(lm.name) && !lm.attachedTo);
+      page.landmarks = page.landmarks.filter((lm: any) => lm && lm.name && !isFreeHandTag(lm.name) && !lm.attachedTo && !lm.isHeld);
 
-      // Purge any areas that represent items, weapons, equipment, free hand tags, or character possessions
+      // Only filter areas that explicitly represent an item, weapon, equipment, or weapon range indicator
       page.areas = page.areas.filter((a: any) => {
         if (!a || typeof a !== 'object') return false;
         const aName = String(a.name || '');
-        if (isFreeHandTag(aName) || isPossessionMatch(aName) || a.attachedTo || a.isHeld || (a.holder && a.holder !== 'ground')) return false;
+        const aType = String(a.type || '').toLowerCase();
+        const isItemTypeArea = aType === 'item' || aType === 'weapon' || aType === 'equipment' || aType === 'range' || aType === 'weapon_range';
+        if (isFreeHandTag(aName) || a.attachedTo || a.isHeld || (a.holder && a.holder !== 'ground') || (isItemTypeArea && isPossessionMatch(aName))) return false;
         return true;
       });
 
-      // Purge any NPCs that match a possessed, held, attached item/vehicle, or free hand tags
+      // Purge any NPCs that are free hand tags or explicitly marked as held/attached items
       page.npcs = page.npcs.filter((n: any) => {
         if (!n || typeof n !== 'object') return false;
         const nName = String(n.name || '').trim();
-        // If entity matches an item, piece of equipment, attached cart, vehicle, or free hand tag, purge it from NPCs!
-        if (isFreeHandTag(nName) || isPossessionMatch(nName) || n.attachedTo || n.isHeld || (n.holder && n.holder !== 'ground')) {
+        if (isFreeHandTag(nName) || n.attachedTo || n.isHeld || (n.holder && n.holder !== 'ground')) {
           return false;
         }
         return true;
@@ -5327,12 +5349,12 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         return { ...n, name: nName };
       });
 
-      // Also purge creatures and entities if present on page
+      // Also purge creatures and entities if explicitly held/attached
       if (Array.isArray(page.creatures)) {
         page.creatures = page.creatures.filter((c: any) => {
           if (!c || typeof c !== 'object') return false;
           const cName = String(c.name || '').trim();
-          if (isFreeHandTag(cName) || isPossessionMatch(cName) || c.attachedTo || c.isHeld) return false;
+          if (isFreeHandTag(cName) || c.attachedTo || c.isHeld) return false;
           return true;
         });
       }
@@ -5340,7 +5362,7 @@ Return ONLY a strict JSON array: [ { ... } ]. If no currency was transacted, ret
         page.entities = page.entities.filter((e: any) => {
           if (!e || typeof e !== 'object') return false;
           const eName = String(e.name || '').trim();
-          if (isFreeHandTag(eName) || isPossessionMatch(eName) || e.attachedTo || e.isHeld) return false;
+          if (isFreeHandTag(eName) || e.attachedTo || e.isHeld) return false;
           return true;
         });
       }
@@ -5720,20 +5742,6 @@ INSTRUCTIONS:
     }
     return parseInt(clean) || 0;
   }
-  private cachedAI: GoogleGenAI | null = null;
-  private cachedAIKey: string | null = null;
-
-  private getAI(): GoogleGenAI {
-    const customKey = typeof window !== 'undefined'
-      ? (localStorage.getItem('aifinity_custom_api_key') || localStorage.getItem('aimud_apikey'))
-      : null;
-    const activeKey = customKey || process.env.API_KEY || '';
-    if (!this.cachedAI || this.cachedAIKey !== activeKey) {
-      this.cachedAI = new GoogleGenAI({ apiKey: activeKey });
-      this.cachedAIKey = activeKey;
-    }
-    return this.cachedAI;
-  }
 
   private lastActionUsage: ActionUsageCost | null = null;
   private currentTurnAccumulatedUsage = {
@@ -5772,49 +5780,59 @@ INSTRUCTIONS:
     }, 120000);
 
     try {
-      let contents: any;
-      if (mapScreenshot) {
-        contents = [
-          {
-            role: 'user',
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: 'image/png',
-                  data: mapScreenshot
-                }
-              }
-            ]
-          }
-        ];
-      } else {
-        contents = [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ];
+      const activeModel = modelName || (typeof process !== 'undefined' && process.env?.VITE_GEMINI_MODEL) || 'gemini-3.8-flash';
+      const customKey = typeof window !== 'undefined'
+        ? (localStorage.getItem('aifinity_custom_api_key') || localStorage.getItem('aimud_apikey'))
+        : null;
+
+      const payload: Record<string, any> = {
+        prompt,
+        mapScreenshot,
+        model: activeModel,
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        maxOutputTokens: 16384,
+      };
+      if (customKey && customKey.trim().length > 10) {
+        payload.apiKey = customKey.trim();
       }
 
-      const activeModel = modelName || (typeof process !== 'undefined' && process.env?.VITE_GEMINI_MODEL) || 'gemini-3.8-flash';
-      const ai = this.getAI();
-      const response = await ai.models.generateContent({
-        model: activeModel,
-        contents: contents,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-          maxOutputTokens: 16384,
-          abortSignal: controller.signal
-        }
+      const response = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+        body: JSON.stringify(payload),
       });
 
       clearTimeout(timeoutId);
       if (this.currentAbortController === controller) {
         this.currentAbortController = null;
       }
+
+      const responseText = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.error("Failed to parse server response as JSON:", responseText.slice(0, 300));
+        throw new Error(responseText.slice(0, 300) || `AI request failed with status ${response.status}`);
+      }
+
+      if (!response.ok || data?.error) {
+        let msg = data?.message || data?.error || `AI request failed with status ${response.status}`;
+        if (typeof msg === 'string' && msg.startsWith('{') && msg.includes('"message"')) {
+          try {
+            const parsedMsg = JSON.parse(msg);
+            msg = parsedMsg?.error?.message || parsedMsg?.message || msg;
+          } catch (e) {}
+        }
+        throw new Error(msg);
+      }
+
+      const respText = data.text || "{}";
+      const resolvedModel = data.model || activeModel;
 
       // Track token usage & calculate accurate cost based on model rates:
       // gemini-3.8-flash rates:
@@ -5823,12 +5841,11 @@ INSTRUCTIONS:
       // gemini-3.1-flash-lite rates:
       // Input tokens: $0.10 per 1,000,000 tokens ($0.00000010 per token)
       // Output tokens: $0.40 per 1,000,000 tokens ($0.00000040 per token)
-      const isFlashLite = activeModel.includes('flash-lite');
+      const isFlashLite = resolvedModel.includes('flash-lite');
       const inputPricePerM = isFlashLite ? 0.10 : 0.15;
       const outputPricePerM = isFlashLite ? 0.40 : 0.60;
 
-      const meta = (response as any).usageMetadata;
-      const respText = response.text || "{}";
+      const meta = data.usageMetadata;
       const pTokens = (meta?.promptTokenCount && meta.promptTokenCount > 0)
         ? meta.promptTokenCount
         : Math.max(1, Math.ceil(prompt.length / 3.8));
@@ -5841,7 +5858,7 @@ INSTRUCTIONS:
       this.currentTurnAccumulatedUsage.candidatesTokens += cTokens;
       this.currentTurnAccumulatedUsage.totalTokens += tTokens;
       this.currentTurnAccumulatedUsage.calls = (this.currentTurnAccumulatedUsage.calls || 0) + 1;
-      this.currentTurnAccumulatedUsage.model = activeModel;
+      this.currentTurnAccumulatedUsage.model = resolvedModel;
 
       const inputCost = (this.currentTurnAccumulatedUsage.promptTokens * inputPricePerM) / 1_000_000;
       const outputCost = (this.currentTurnAccumulatedUsage.candidatesTokens * outputPricePerM) / 1_000_000;
@@ -5857,8 +5874,8 @@ INSTRUCTIONS:
         outputCost,
         totalCost,
         calls: totalCalls,
-        model: activeModel,
-        costFormatted: `Total Action Cost: $${totalCost.toFixed(6)} total ($${inputCost.toFixed(6)} input + $${outputCost.toFixed(6)} output | ${this.currentTurnAccumulatedUsage.promptTokens.toLocaleString()} in, ${this.currentTurnAccumulatedUsage.candidatesTokens.toLocaleString()} out · ${activeModel}${passesLabel})`
+        model: resolvedModel,
+        costFormatted: `Total Action Cost: $${totalCost.toFixed(6)} total ($${inputCost.toFixed(6)} input + $${outputCost.toFixed(6)} output | ${this.currentTurnAccumulatedUsage.promptTokens.toLocaleString()} in, ${this.currentTurnAccumulatedUsage.candidatesTokens.toLocaleString()} out · ${resolvedModel}${passesLabel})`
       };
 
       return respText;

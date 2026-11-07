@@ -1079,6 +1079,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   {pStats.currentlyHolding.length > 0 ? (
                                     <div className="text-[9px] text-gray-300 pl-1 border-l border-amber-800/60 space-y-1 mt-0.5">
                                       {pStats.currentlyHolding
+                                        .filter(it => {
+                                          if (!it || !it.name) return false;
+                                          const lower = it.name.toLowerCase();
+                                          if (
+                                            lower.startsWith('size capacity') ||
+                                            lower.includes('capacity & scale') ||
+                                            lower.includes('capacity and scale') ||
+                                            lower.includes('item size categories') ||
+                                            lower.includes('scale capacity') ||
+                                            WeightInventoryEngine.isLimbOrGripResidue(it.name)
+                                          ) {
+                                            return false;
+                                          }
+                                          return true;
+                                        })
                                         .filter((it, idx, arr) => {
                                           const cleanName = (it.name || '')
                                             .replace(/^[-*•>\s]*(?:\[(?:(?:right|left|main|off|both)?\s*hands?(?:\s*(?:\(two[- ]handed\)|two[- ]handed|\/\s*arms?))?|two[- ]handed|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\]|(?:(?:right|left|main|off|both)\s*hands?|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\s*[:=-])(?:\s*(?:\(two[- ]handed\)|two[- ]handed|\/\s*arms?))?[:=\s-]*/i, '')
@@ -1102,10 +1117,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                                         })
                                         .map((it, hi) => {
                                           let cleanDisplayName = it.name
-                                            .replace(/^[-*•>\s]*(?:\[(?:(?:right|left|main|off|both)?\s*hands?(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|two[- ]handed(?:\s*grip)?|\(two[- ]handed(?:\s*grip)?\)|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\]|(?:(?:right|left|main|off|both)\s*hands?|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\s*[:=-])(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?[:=\s-]*/i, '')
-                                            .replace(/^(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip)\s*[:=-]\s*/i, '')
+                                            .replace(/^[-*•>\s]*\[?\s*(?:(?:right|left|main|off|both)?\s*hands?(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|two[- ]handed(?:\s*grip)?|\(two[- ]handed(?:\s*grip)?\)|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\s*\]?\s*[:=-]?\s*/i, '')
+                                            .replace(/^(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip)\s*[:=-]?\s*/i, '')
                                             .replace(/^weight\s*[:=]\s*[0-9.]+\s*lbs?\.?\s*(?:dimensions?\s*[:=]\s*)?/i, '')
                                             .replace(/(?:\s*\.?\s*\(Overflow:\s*Yes[^)]*\))+/gi, '')
+                                            .replace(/^[\[\s*-]+|[\]\s*:]+$/g, '')
                                             .trim();
                                           if (!cleanDisplayName || WeightInventoryEngine.isLimbOrGripResidue(cleanDisplayName) || /grip|two[- ]handed|\(two[- ]handed\)/i.test(cleanDisplayName)) {
                                             const matchingEq = pStats.equippedGear?.find(e => Math.abs(e.weight - it.weight) < 0.05 && !WeightInventoryEngine.isLimbOrGripResidue(e.name)) ||

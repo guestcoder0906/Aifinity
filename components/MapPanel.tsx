@@ -176,9 +176,9 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
       if (!lower || lower.length < 2) return;
       possessions.add(lower);
       const unspaced = lower.replace(/[\s_-]+/g, '');
-      if (unspaced.length >= 2) possessions.add(unspaced);
+      if (unspaced.length >= 3) possessions.add(unspaced);
       const pascal = str.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
-      if (pascal !== lower && pascal.length >= 2) possessions.add(pascal);
+      if (pascal !== lower && pascal.length >= 3) possessions.add(pascal);
     };
 
     const allTxt = (files || []).filter(f => f.endsWith('.txt'));
@@ -195,18 +195,6 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
       const c = fileSystem.read(f);
       if (c) {
         extractAllPossessionsFromCharacterSheet(c).forEach(p => registerPossession(p));
-        if (
-          /category\s*[:=]\s*(?:item|equipment|gear|weapon|vehicle|mount|container|armor|tool|transport)/i.test(c) ||
-          /(?:attached|equipped|hitched|towed|held|carried|riding)\s*(?:to|by)?\s*[:=]/i.test(c) ||
-          /\[(?:IDENTIFICATION|TECHNICAL RULES|SPECIAL PROPERTIES|CONDITION & ACTIVE EFFECTS)\]/i.test(c)
-        ) {
-          const base = f.replace(/\.txt$/, '');
-          registerPossession(base);
-          const nameMatch = c.match(/[-*•]?\s*Name\s*[:=]\s*([^\n\r]+)/i);
-          if (nameMatch && nameMatch[1]) {
-            registerPossession(nameMatch[1].replace(/\[[^\]]+\]/g, ''));
-          }
-        }
       }
     }
     return possessions;
@@ -218,11 +206,11 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
     if (!clean) return false;
     if (allKnownPossessions.has(clean)) return true;
     const unspaced = clean.replace(/[\s_-]+/g, '');
-    if (allKnownPossessions.has(unspaced)) return true;
+    if (unspaced.length >= 3 && allKnownPossessions.has(unspaced)) return true;
     const pascal = rawName.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/[-_]npc$/i, '').trim();
     if (allKnownPossessions.has(pascal)) return true;
     for (const p of allKnownPossessions) {
-      if (clean === p || clean.includes(p) || p.includes(clean) || areItemNamesEquivalent(clean, p) || areItemNamesEquivalent(pascal, p)) {
+      if (clean === p || areItemNamesEquivalent(clean, p) || areItemNamesEquivalent(pascal, p)) {
         return true;
       }
     }
@@ -1011,27 +999,27 @@ const MapPanel = forwardRef<MapPanelHandle, MapPanelProps>(({ fileSystem, files,
 
             const areaTypeLower = String(area.type || '').toLowerCase();
             const areaNameLower = String(area.name || '').toLowerCase();
-            const isItemType = areaTypeLower === 'item' || areaTypeLower === 'loot' || areaTypeLower === 'weapon' || areaTypeLower === 'treasure' || areaTypeLower === 'equipment' || areaTypeLower === 'vehicle' || areaTypeLower === 'transport' || areaTypeLower === 'mount';
+            const isItemType = areaTypeLower === 'item' || areaTypeLower === 'loot' || areaTypeLower === 'weapon' || areaTypeLower === 'treasure' || areaTypeLower === 'equipment';
             const isItemOrWeaponType = isItemType || areaTypeLower === 'range' || areaTypeLower === 'weapon_range';
 
-            // If area is marked held or attached to an entity, or belongs to a character's held/equipped gear, do not draw it loose on ground
-            if (area.isHeld || area.attachedTo || (area.holder && area.holder !== 'ground') || isPossessionOfAnyone(area.name)) return null;
+            // If area is marked held or attached to an entity, or is an item-type area that belongs to a character's held/equipped gear, do not draw it loose on ground
+            if (area.isHeld || area.attachedTo || (area.holder && area.holder !== 'ground') || (isItemOrWeaponType && isPossessionOfAnyone(area.name))) return null;
 
             // If area represents an item or weapon range that is currently held by any player or NPC, suppress loose rendering
-            if (isItemOrWeaponType || areaNameLower.includes('range') || areaNameLower.includes('reach')) {
+            if (isItemOrWeaponType) {
               const matchesHeld = (currentPage.players || []).some((pl: any) =>
                 (pl.heldItems || []).some((hi: any) => {
                   const hiClean = (hi.cleanName || hi.name || '').toLowerCase();
-                  return hiClean && (areaNameLower.includes(hiClean) || hiClean.includes(areaNameLower));
+                  return hiClean && areItemNamesEquivalent(areaNameLower, hiClean);
                 }) || (pl.allPossessions || []).some((pos: string) =>
-                  areaNameLower === pos || areaNameLower.includes(pos) || pos.includes(areaNameLower)
+                  areaNameLower === pos || areItemNamesEquivalent(areaNameLower, pos)
                 )
               ) || (currentPage.npcs || []).some((npc: any) =>
                 (npc.heldItems || []).some((hi: any) => {
                   const hiClean = (hi.cleanName || hi.name || '').toLowerCase();
-                  return hiClean && (areaNameLower.includes(hiClean) || hiClean.includes(areaNameLower));
+                  return hiClean && areItemNamesEquivalent(areaNameLower, hiClean);
                 }) || (npc.allPossessions || []).some((pos: string) =>
-                  areaNameLower === pos || areaNameLower.includes(pos) || pos.includes(areaNameLower)
+                  areaNameLower === pos || areItemNamesEquivalent(areaNameLower, pos)
                 )
               );
               if (matchesHeld) return null;

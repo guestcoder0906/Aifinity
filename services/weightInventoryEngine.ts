@@ -195,6 +195,8 @@ export interface AttackInfo {
   knockdownThreshold?: number; // Physical knockdown / stagger threshold (force-scaled)
   criticalPlacementBonus?: number; // Bonus to critical placement against 1,000-point threshold (precision-scaled)
   positionalExecutionBonus?: number; // Bonus to positional execution / maneuver margin against 1,000-point threshold (precision-scaled)
+  strengthDamageModifier?: number; // Direct strength damage bonus or decrease/penalty (e.g. +3 or -2)
+  strengthScaledDamage?: string; // Formatted damage string with strength modifier applied
   rawText?: string;
 }
 
@@ -209,6 +211,7 @@ export interface CharacterPhysicalStats {
   dimensionsApply: boolean;
   bodyWeight: number; // lbs, default 160 for human if unspecified
   strengthMultiplier: number; // default 1.0x
+  strengthModifier?: number; // e.g. +3, -1, 0
   maxLiftStrength: number; // lbs (100% of body weight for 1.0x baseline human)
   baseWalkingSpeed: number; // m/s, default 1.5
   baseRunningSpeed: number; // m/s, default 4.5
@@ -1608,7 +1611,7 @@ export class WeightInventoryEngine {
    */
   public static isLimbOrGripResidue(name: string): boolean {
     if (!name) return true;
-    const trimmed = name.trim().replace(/^\[|\]$/g, '').trim();
+    const trimmed = name.trim().replace(/^[\[\s*-]+|[\]\s*:]+$/g, '').trim();
     if (!trimmed) return true;
     const lower = trimmed.toLowerCase();
     if (
@@ -1650,6 +1653,18 @@ export class WeightInventoryEngine {
 
     // 1. Immediately reject rule / mandate / guideline / capacity / header lines
     if (
+      lower.startsWith('size capacity') ||
+      lower.startsWith('- size capacity') ||
+      lower.startsWith('* size capacity') ||
+      lower.includes('size capacity') ||
+      lower.includes('capacity & scale') ||
+      lower.includes('capacity and scale') ||
+      lower.includes('item size categories') ||
+      lower.includes('item size category') ||
+      lower.includes('holding size capacity') ||
+      lower.includes('scale capacity') ||
+      lower.includes('size categories & capacity') ||
+      lower.includes('size categories and capacity') ||
       lower.startsWith('holding anatomy') ||
       lower.startsWith('holding capacity') ||
       lower.startsWith('capacity & status') ||
@@ -1700,7 +1715,8 @@ export class WeightInventoryEngine {
       lower.includes('hands free') ||
       lower === 'none' ||
       lower === '(none)' ||
-      /^[-\s*•]*\d+\.\s*(?:overflow|weight|context|drop)/i.test(rawText)
+      /^[-\s*•]*\d+\.\s*(?:overflow|weight|context|drop)/i.test(rawText) ||
+      /^[-\s*•]*\[?(?:holding\s*)?(?:size\s*capacity|capacity\s*&|scale\s*capacity|item\s*size)/i.test(rawText)
     ) {
       return null;
     }
@@ -1748,8 +1764,8 @@ export class WeightInventoryEngine {
       prevText = text;
       text = text
         .replace(/^[-*•>\s]+/, '')
-        .replace(/^\[(?:(?:right|left|main|off|both)?\s*hands?(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|two[- ]handed(?:\s*grip)?|\(two[- ]handed(?:\s*grip)?\)|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow(?:\s*hold)?)\](?:\s*(?:\/\s*arms?|\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|grip))?\s*[:=-]?\s*/i, '')
-        .replace(/^(?:(?:right|left|main|off|both)\s*hands?(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|two[- ]handed(?:\s*grip)?|\(two[- ]handed(?:\s*grip)?\)|both\s*hands(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|one[- ]handed(?:\s*grip)?|\(one[- ]handed(?:\s*grip)?\)|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold|hands?)(?:\s*(?:\/\s*arms?|\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|grip))?\s*[:=-]\s*/i, '')
+        // Handles balanced or unbalanced brackets, e.g. "[Main Hand]", "Main Hand]", "[Main Hand", "* Main Hand]:", "Main Hand: "
+        .replace(/^\[?\s*(?:(?:right|left|main|off|both)?\s*hands?(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|two[- ]handed(?:\s*grip)?|\(two[- ]handed(?:\s*grip)?\)|both\s*hands(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|one[- ]handed(?:\s*grip)?|\(one[- ]handed(?:\s*grip)?\)|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\s*\]?(?:\s*(?:\/\s*arms?|\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|grip))?\s*[:=-]?\s*/i, '')
         .replace(/^(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip)\s*[:=-]?\s*/i, '')
         .trim();
     }
@@ -1768,6 +1784,12 @@ export class WeightInventoryEngine {
     // 4. Check if the remaining core text is a rule, mandate, or empty
     const cleanLower = text.toLowerCase();
     if (
+      cleanLower.startsWith('size capacity') ||
+      cleanLower.includes('size capacity') ||
+      cleanLower.includes('capacity & scale') ||
+      cleanLower.includes('capacity and scale') ||
+      cleanLower.includes('item size categories') ||
+      cleanLower.includes('scale capacity') ||
       cleanLower.startsWith('dynamic overflow rule') ||
       cleanLower.startsWith('weight & capacity mandate') ||
       cleanLower.startsWith('overflow rule') ||
@@ -3502,6 +3524,13 @@ export class WeightInventoryEngine {
       nameLower.includes('chilling touch')
     ) && !/(?:sword|dagger|blade|axe|bow|rifle|gun|spear|staff|mace|shield|wand|crossbow|pistol|hammer|flail|scythe)\b/i.test(nameLower);
 
+    // Parse Strength damage modifier if present (e.g. "(+3 Strength)", "(-1 Str)", "+2 Str")
+    let strengthDamageModifier: number | undefined;
+    const strDmgMatch = body.match(/([+-]\d+)\s*(?:strength|str)\b/i) || body.match(/\(([+-]\d+)\s*(?:strength|str)?\)/i);
+    if (strDmgMatch) {
+      strengthDamageModifier = parseInt(strDmgMatch[1]);
+    }
+
     return {
       name,
       damage: damageStr,
@@ -3519,6 +3548,7 @@ export class WeightInventoryEngine {
       knockdownThreshold,
       criticalPlacementBonus,
       positionalExecutionBonus,
+      strengthDamageModifier,
       rawText: line.trim()
     };
   }
@@ -3923,6 +3953,17 @@ export class WeightInventoryEngine {
       lower.includes('created character file') ||
       lower.startsWith('holding anatomy') ||
       lower.startsWith('holding capacity') ||
+      lower.startsWith('size capacity') ||
+      lower.startsWith('- size capacity') ||
+      lower.startsWith('* size capacity') ||
+      lower.includes('size capacity') ||
+      lower.includes('capacity & scale') ||
+      lower.includes('capacity and scale') ||
+      lower.includes('item size categories') ||
+      lower.includes('item size category') ||
+      lower.includes('holding size capacity') ||
+      lower.includes('scale capacity') ||
+      /^[-\s*•]*\[?(?:holding\s*)?(?:size\s*capacity|capacity\s*&|scale\s*capacity|item\s*size)/i.test(trimmed) ||
       lower.startsWith('items currently held') ||
       lower.startsWith('currently holding') ||
       lower.includes('overflow rule') ||
@@ -4026,11 +4067,28 @@ export class WeightInventoryEngine {
       }
     }
 
+    // Strip leading limb/handedness prefix from name if present (e.g. "Main Hand] Brass-Bound Censor Staff" -> "Brass-Bound Censor Staff")
+    let prevN = '';
+    while (name !== prevN) {
+      prevN = name;
+      name = name
+        .replace(/^[-*•>\s]+/, '')
+        .replace(/^\[?\s*(?:(?:right|left|main|off|both)?\s*hands?(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|two[- ]handed(?:\s*grip)?|\(two[- ]handed(?:\s*grip)?\)|both\s*hands(?:\s*(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip))?|one[- ]handed(?:\s*grip)?|\(one[- ]handed(?:\s*grip)?\)|jaws?|mouth|teeth|talons?|beak|claws?\s*\d*|tentacles?\s*\d*|trunk|held\s+in\s+[a-z]+|in\s+[a-z]+|under\s+arm(?:\s*\(overflow\))?|overflow\s*hold)\s*\]?(?:\s*(?:\/\s*arms?|\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|grip))?\s*[:=-]?\s*/i, '')
+        .replace(/^(?:\(two[- ]handed(?:\s*grip)?\)|two[- ]handed(?:\s*grip)?|\/\s*arms?|grip)\s*[:=-]?\s*/i, '')
+        .trim();
+    }
+
     const cleanNameLower = name.toLowerCase().replace(/^[-*•>\s\d.]+/, '').replace(/^\[|\]$/g, '').trim();
     if (
       !name ||
       name.toLowerCase() === 'none' ||
       name.toLowerCase() === '0 lbs' ||
+      cleanNameLower.startsWith('size capacity') ||
+      cleanNameLower.includes('capacity & scale') ||
+      cleanNameLower.includes('capacity and scale') ||
+      cleanNameLower.includes('item size categories') ||
+      cleanNameLower.includes('scale capacity') ||
+      WeightInventoryEngine.isLimbOrGripResidue(name) ||
       cleanNameLower.startsWith('total starting') ||
       cleanNameLower.includes('initialized starting gear') ||
       cleanNameLower.includes('starting gear') ||
@@ -4374,6 +4432,7 @@ export class WeightInventoryEngine {
     let dimensionsApply = true;
     let bodyWeight = 160; // lbs default for average human
     let strengthMultiplier = 1.0;
+    let strengthModifier: number | undefined;
     let baseWalkingSpeed = 1.5; // m/s
     let baseRunningSpeed = 4.5; // m/s
     let currentWalkingSpeed = 1.5;
@@ -4796,17 +4855,44 @@ export class WeightInventoryEngine {
           }
         }
 
-        // Strength & Multiplier
-        if (lower.includes('strength:')) {
-          const multMatch = line.match(/(?:multiplier|lift multiplier)[:=\s]*([0-9]+(?:\.[0-9]+)?)x?/i);
+        // Strength, Multiplier & Strength Modifier
+        if (lower.includes('strength') || /\bstr\s*[:=]/i.test(lower)) {
+          // 1. Explicit multiplier like "1.5x", "Multiplier: 1.2x", "Lift Multiplier: 1.0"
+          const multMatch = line.match(/(?:multiplier|lift multiplier)[:=\s]*([0-9]+(?:\.[0-9]+)?)x?/i) || line.match(/[:=\s]([0-9]+(?:\.[0-9]+)?)\s*x\b/i);
           if (multMatch) {
             strengthMultiplier = parseFloat(multMatch[1]);
+            strengthModifier = Math.round((strengthMultiplier - 1.0) * 10);
           } else {
-            // Check formula +X%(1000)
+            // 2. Check formula +X%(1000)
             const pctMatch = line.match(/([+-]?\d+)\s*%\s*\(\s*1000\s*\)/);
             if (pctMatch) {
               const bonus = parseInt(pctMatch[1]) / 1000;
               strengthMultiplier = Math.max(0.2, 1.0 + bonus);
+              strengthModifier = Math.round(bonus * 10);
+            } else {
+              // 3. Check percentage like "+20%", "-15%"
+              const directPctMatch = line.match(/(?:strength|str)[^:]*[:=][^%]*?([+-]?\d+)\s*%/i);
+              if (directPctMatch) {
+                const bonus = parseInt(directPctMatch[1]) / 100;
+                strengthMultiplier = Math.max(0.2, 1.0 + bonus);
+                strengthModifier = Math.round(bonus * 10);
+              } else {
+                // 4. Standard RPG modifier in parentheses, e.g. "Strength: 16 (+3)" or "Strength: 8 (-1)"
+                const rpgModMatch = line.match(/\b\d+\s*\(([+-]\d+)\)/);
+                if (rpgModMatch) {
+                  const modVal = parseInt(rpgModMatch[1]);
+                  strengthModifier = modVal;
+                  strengthMultiplier = Math.max(0.2, 1.0 + (modVal * 0.1));
+                } else {
+                  // 5. Explicit modifier label, e.g. "Strength Modifier: +3" or "Strength: +2"
+                  const explicitModMatch = line.match(/(?:strength\s*modifier|strength\s*mod|modifier)[:=\s]*([+-]?\d+)\b/i) || line.match(/(?:strength|str)[:=\s]*([+-]\d+)\b/i);
+                  if (explicitModMatch) {
+                    const modVal = parseInt(explicitModMatch[1]);
+                    strengthModifier = modVal;
+                    strengthMultiplier = Math.max(0.2, 1.0 + (modVal * 0.1));
+                  }
+                }
+              }
             }
           }
         }
@@ -5379,6 +5465,17 @@ export class WeightInventoryEngine {
 
         // Holding capacity / status line
         if (
+          lower.includes('size capacity') ||
+          lower.includes('capacity & scale') ||
+          lower.includes('capacity and scale') ||
+          lower.includes('item size categories') ||
+          lower.includes('item size category') ||
+          lower.includes('holding size capacity') ||
+          lower.includes('scale capacity') ||
+          lower.startsWith('size capacity') ||
+          lower.startsWith('- size capacity') ||
+          lower.startsWith('* size capacity') ||
+          /^[-\s*•]*\[?(?:holding\s*)?(?:size\s*capacity|capacity\s*&|scale\s*capacity|item\s*size)/i.test(line) ||
           lower.includes('holding capacity') ||
           lower.includes('capacity & status') ||
           lower.includes('holding status') ||
@@ -5453,6 +5550,16 @@ export class WeightInventoryEngine {
 
         const item = this.parseItemLine(unwrapped.cleanText);
         if (item) {
+          const itemLower = item.name.toLowerCase();
+          if (
+            itemLower.startsWith('size capacity') ||
+            itemLower.includes('capacity & scale') ||
+            itemLower.includes('capacity and scale') ||
+            itemLower.includes('item size categories') ||
+            itemLower.includes('scale capacity')
+          ) {
+            continue;
+          }
           item.category = 'equipped';
 
           // If name is corrupted or contains limb/grip residue, recover from equippedGear or carriedItems
@@ -6233,6 +6340,7 @@ export class WeightInventoryEngine {
       dimensionsApply,
       bodyWeight: Math.round(bodyWeight * 100) / 100,
       strengthMultiplier,
+      strengthModifier,
       maxLiftStrength,
       baseWalkingSpeed,
       baseRunningSpeed,
